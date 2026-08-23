@@ -1,1 +1,183 @@
-# nfl-dfs-simulator
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>NFL DFS Simulator</title>
+<style>
+:root{--bg:#0b1020;--card:#151c31;--muted:#9aa5bd;--text:#f5f7fb;--accent:#43d17a;--line:#29334d}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+main{max-width:760px;margin:auto;padding:18px 14px 40px}.hero{padding:8px 2px 18px}.hero h1{margin:0;font-size:29px}.hero p{margin:5px 0;color:var(--muted)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;margin:12px 0}
+h2{font-size:17px;margin:0 0 13px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+label{font-size:12px;color:var(--muted);display:block;margin-bottom:5px}
+input,select,button{font:inherit}input,select{width:100%;background:#0e1527;color:var(--text);border:1px solid var(--line);border-radius:11px;padding:11px}
+button{border:0;border-radius:12px;padding:12px 14px;font-weight:700;cursor:pointer}.primary{background:var(--accent);color:#06140b;width:100%;font-size:16px}.secondary{background:#24304a;color:white}.danger{background:#4b2230;color:#ffd9df}.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.row>*{flex:1}.check{display:flex;align-items:center;gap:8px;margin:8px 0;color:#dfe5f2;font-size:14px}.check input{width:auto}
+.tabs{display:flex;gap:7px;overflow:auto;margin:8px 0}.tabs button{white-space:nowrap;background:#1d2740;color:#cdd5e6}.tabs button.active{background:var(--accent);color:#06140b}
+.small{font-size:12px;color:var(--muted)}.status{padding:10px;border-radius:10px;background:#0e1527;color:#cdd5e6;margin-top:10px}
+table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:8px 5px;border-bottom:1px solid var(--line);text-align:left}th{color:var(--muted)}
+.lineup{background:#0e1527;border-radius:14px;padding:12px;margin:9px 0}.lineup strong{color:var(--accent)}.players{line-height:1.7}.pill{display:inline-block;background:#222e49;padding:3px 7px;border-radius:8px;margin:2px;font-size:11px}
+#playerRows{max-height:360px;overflow:auto}.hidden{display:none}@media(max-width:520px){.grid{grid-template-columns:1fr}.hero h1{font-size:26px}}
+</style>
+</head>
+<body>
+<main>
+<section class="hero"><h1>🏈 NFL DFS Simulator</h1><p>iPhone-friendly DraftKings NFL optimizer + GPP simulator</p></section>
+
+<div class="tabs">
+<button class="active" onclick="showTab('opt',this)">Optimizer</button>
+<button onclick="showTab('pool',this)">Player Pool</button>
+<button onclick="showTab('results',this)">Results</button>
+</div>
+
+<section id="opt">
+<div class="card">
+<h2>Lineup Settings</h2>
+<div class="grid">
+<div><label>Lineups</label><input id="num" type="number" value="20" min="1" max="150"></div>
+<div><label>Salary Cap</label><input id="cap" type="number" value="50000"></div>
+<div><label>Max Players / Team</label><input id="maxTeam" type="number" value="4" min="1" max="9"></div>
+<div><label>Min Unique</label><input id="unique" type="number" value="2" min="0" max="8"></div>
+<div><label>Max Player Exposure %</label><input id="exposure" type="number" value="60" min="1" max="100"></div>
+<div><label>Simulation Runs</label><input id="sims" type="number" value="10000" min="100" max="50000"></div>
+</div>
+</div>
+
+<div class="card">
+<h2>Stacking</h2>
+<div class="grid">
+<div><label>QB Stack</label><select id="qbStack"><option value="0">Off</option><option value="1" selected>QB + 1</option><option value="2">QB + 2</option><option value="3">QB + 3</option></select></div>
+<div><label>Second Stack</label><select id="secondStack"><option value="0" selected>Off</option><option value="1">1 from each of 2 teams</option><option value="2">2 from each of 2 teams</option></select></div>
+<div><label>Second Stack Same Game</label><select id="sameGame"><option value="no" selected>No</option><option value="yes">Yes</option></select></div>
+<div><label>Bring Back</label><select id="bring"><option value="0" selected>Off</option><option value="1">1 opponent</option><option value="2">2 opponents</option></select></div>
+</div>
+<label class="check"><input id="avoid" type="checkbox" checked> Avoid QB vs opposing DST</label>
+</div>
+
+<div class="card">
+<h2>Strategy</h2>
+<div class="grid">
+<div><label>Ranking</label><select id="rank"><option value="projection">Projection</option><option value="ceiling">Ceiling</option><option value="gpp" selected>GPP Upside</option><option value="balanced">Balanced</option></select></div>
+<div><label>Randomness</label><select id="random"><option value="low">Low</option><option value="med" selected>Medium</option><option value="high">High</option></select></div>
+</div>
+<button class="primary" onclick="generate()">⚡ GENERATE & SIMULATE</button>
+<div id="status" class="status">Ready. Load the built-in sample pool or import your own CSV.</div>
+</div>
+
+<div class="card">
+<h2>Data</h2>
+<div class="row">
+<button class="secondary" onclick="loadSample()">Load Sample NFL Pool</button>
+<button class="secondary" onclick="document.getElementById('csv').click()">Import CSV</button>
+<input id="csv" type="file" accept=".csv" class="hidden" onchange="importCSV(event)">
+</div>
+<p class="small">DraftKings CSV files are supported directly. The app automatically skips the instruction lines and reads the player header.</p>
+</div>
+</section>
+
+<section id="pool" class="hidden">
+<div class="card"><h2>Player Pool <span id="count" class="small"></span></h2>
+<div id="playerRows"></div></div>
+<div class="card">
+<h2>Add Player</h2>
+<div class="grid">
+<input id="pn" placeholder="Name"><input id="pp" placeholder="QB/RB/WR/TE/DST">
+<input id="pt" placeholder="Team"><input id="po" placeholder="Opponent">
+<input id="ps" type="number" placeholder="Salary"><input id="px" type="number" step=".1" placeholder="Projection">
+<input id="pc" type="number" step=".1" placeholder="Ceiling"><input id="pg" placeholder="Game e.g. BUF-HOU">
+</div><br><button class="primary" onclick="addPlayer()">Add Player</button>
+</div>
+</section>
+
+<section id="results" class="hidden">
+<div class="card"><h2>Generated Lineups</h2>
+<div class="row"><button class="secondary" onclick="downloadCSV()">Export CSV</button><button class="secondary" onclick="copyTop()">Copy Top Lineup</button></div>
+<div id="resultsBox" class="small" style="margin-top:10px">No lineups yet.</div>
+</div>
+</section>
+</main>
+
+<script>
+let players=[], results=[];
+
+const sample=[
+["Josh Allen","QB","BUF","HOU",7000,22,31,"BUF-HOU"],["Joe Burrow","QB","CIN","TB",6900,21,30,"CIN-TB"],["Lamar Jackson","QB","BAL","IND",6800,23,34,"BAL-IND"],["Jalen Hurts","QB","PHI","WAS",6600,22,32,"PHI-WAS"],
+["Jahmyr Gibbs","RB","DET","NO",8000,19,31,"DET-NO"],["Bijan Robinson","RB","ATL","PIT",7700,20,32,"ATL-PIT"],["Jonathan Taylor","RB","IND","BAL",7300,18,29,"BAL-IND"],["James Cook","RB","BUF","HOU",7200,17,29,"BUF-HOU"],["Chase Brown","RB","CIN","TB",7100,17,28,"CIN-TB"],["Saquon Barkley","RB","PHI","WAS",7000,18,30,"PHI-WAS"],
+["Ja'Marr Chase","WR","CIN","TB",7800,20,34,"CIN-TB"],["Amon-Ra St. Brown","WR","DET","NO",7500,19,31,"DET-NO"],["Justin Jefferson","WR","MIN","GB",7300,18,32,"MIN-GB"],["Nico Collins","WR","HOU","BUF",7000,18,31,"BUF-HOU"],["Chris Olave","WR","NO","DET",6700,17,29,"DET-NO"],["CeeDee Lamb","WR","DAL","NYG",7600,19,33,"DAL-NYG"],["Terry McLaurin","WR","WAS","PHI",6500,15,27,"PHI-WAS"],["George Pickens","WR","DAL","NYG",6400,14,27,"DAL-NYG"],
+["Brock Bowers","TE","LV","MIA",6900,16,29,"LV-MIA"],["Trey McBride","TE","ARI","LAC",6800,16,30,"ARI-LAC"],["Kyle Pitts","TE","ATL","PIT",4700,10,20,"ATL-PIT"],["Tyler Warren","TE","IND","BAL",4900,11,22,"BAL-IND"],
+["Chargers DST","DST","LAC","ARI",3500,8,15,"ARI-LAC"],["Jaguars DST","DST","JAX","CAR",3400,8,14,"JAX-CAR"],["Steelers DST","DST","PIT","ATL",3300,8,15,"ATL-PIT"],["Eagles DST","DST","PHI","WAS",3100,7,14,"PHI-WAS"],["Bills DST","DST","BUF","HOU",3000,7,13,"BUF-HOU"]
+].map(x=>({name:x[0],pos:x[1],team:x[2],opp:x[3],salary:x[4],proj:x[5],ceil:x[6],game:x[7],id:crypto.randomUUID()}));
+
+function showTab(id,btn){document.querySelectorAll("main>section").forEach(s=>{if(["opt","pool","results"].includes(s.id))s.classList.add("hidden")});document.getElementById(id).classList.remove("hidden");document.querySelectorAll(".tabs button").forEach(b=>b.classList.remove("active"));btn.classList.add("active");if(id==="pool")renderPool()}
+function loadSample(){players=sample.map(p=>({...p,id:crypto.randomUUID()}));renderPool();setStatus("Loaded "+players.length+" sample players.")}
+function setStatus(s){document.getElementById("status").textContent=s}
+function renderPool(){document.getElementById("count").textContent="("+players.length+" players)";document.getElementById("playerRows").innerHTML=players.map((p,i)=>`<div style="padding:7px 0;border-bottom:1px solid var(--line)"><b>${p.name}</b> <span class="pill">${p.pos}</span><span class="pill">${p.team}</span> $${p.salary.toLocaleString()} · ${p.proj} pts <button class="danger" style="float:right;padding:5px 8px" onclick="players.splice(${i},1);renderPool()">×</button></div>`).join("")}
+function addPlayer(){let p={name:pn.value.trim(),pos:pp.value.trim().toUpperCase(),team:pt.value.trim().toUpperCase(),opp:po.value.trim().toUpperCase(),salary:+ps.value,proj:+px.value,ceil:+pc.value||(+px.value*1.4),game:pg.value.trim().toUpperCase(),id:crypto.randomUUID()};if(!p.name||!p.pos||!p.team||!p.salary||!p.proj)return alert("Enter name, position, team, salary and projection.");players.push(p);["pn","pp","pt","po","ps","px","pc","pg"].forEach(x=>document.getElementById(x).value="");renderPool()}
+function parseCSVLine(line){let out=[],cur="",q=false;for(let i=0;i<line.length;i++){let c=line[i];if(c==="\\\""){if(q&&line[i+1]==="\\\""){cur+="\\\"";i++;}else q=!q}else if(c===","&&!q){out.push(cur.trim());cur=""}else cur+=c}out.push(cur.trim());return out}
+function importCSV(e){
+  let f=e.target.files[0]; if(!f)return;
+  let r=new FileReader();
+  r.onload=()=>{
+    try{
+      let lines=r.result.replace(/^\\uFEFF/,"").split(/\\r?\\n/).filter(x=>x.trim()!=="");
+      // DraftKings exports put the real header after an instruction block.
+      let idx=lines.findIndex(x=>x.includes("Position,Name + ID,Name,ID,Roster Position,Salary,Game Info,TeamAbbrev,AvgPointsPerGame"));
+      if(idx<0) idx=lines.findIndex(x=>/^Position,/.test(x));
+      if(idx<0){alert("I couldn't find the DraftKings player header.");return}
+      let head=parseCSVLine(lines[idx]).map(x=>x.toLowerCase());
+      let data=[];
+      for(let i=idx+1;i<lines.length;i++){
+        let a=parseCSVLine(lines[i]); if(a.length<head.length)continue;
+        let o={};head.forEach((h,j)=>o[h]=a[j]??"");
+        let pos=(o.position||o.pos||"").toUpperCase();
+        let game=(o["game info"]||o.game||"").trim();
+        let team=(o.teamabbrev||o.team||"").trim().toUpperCase();
+        let opp=(o.opponent||o.opp||"").trim().toUpperCase();
+        if(!opp && game.includes("@")){
+          let matchup=game.split(/\\s+/)[0].split("@");
+          if(matchup.length===2)opp=team===matchup[0]?matchup[1]:matchup[0];
+        }
+        let proj=parseFloat(o.avgpointspergame||o.projection||o.proj||0)||0;
+        let salary=parseInt(String(o.salary||"").replace(/[$,]/g,""),10)||0;
+        if(o.name && salary && pos){
+          data.push({name:o.name.trim(),pos,team,opp,salary,proj,ceil:proj*1.45,game,id:crypto.randomUUID()});
+        }
+      }
+      players=data;
+      renderPool();
+      setStatus("✅ DraftKings CSV imported: "+players.length+" players. You can generate lineups now.");
+      document.querySelectorAll(".tabs button")[1].click();
+    }catch(err){console.error(err);alert("CSV import error: "+err.message)}
+    e.target.value="";
+  };
+  r.readAsText(f);
+}
+
+function shuffle(a){return a.sort(()=>Math.random()-.5)}
+function weighted(arr,scoreFn){let weights=arr.map(x=>Math.max(.01,scoreFn(x)));let total=weights.reduce((a,b)=>a+b,0),r=Math.random()*total;for(let i=0;i<arr.length;i++){r-=weights[i];if(r<=0)return arr[i]}return arr[arr.length-1]}
+function compatible(a,b){return !(a.pos==="QB"&&b.pos==="DST"&&a.opp===b.team)||(b.pos==="QB"&&a.pos==="DST"&&b.opp===a.team)}
+function pick(arr,used,teamCounts,n,rankMode){let pool=arr.filter(p=>!used.has(p.id)&&(teamCounts[p.team]||0)<+maxTeam.value);if(!pool.length)return null;let rnd=document.getElementById("random").value==="low"?0.12:document.getElementById("random").value==="high"?0.45:0.28;return weighted(pool,p=>{let base=rankMode==="ceiling"?p.ceil:rankMode==="projection"?p.proj:rankMode==="balanced"?(p.proj+p.ceil)/2:p.proj+(p.ceil-p.proj)*.75;return base*(1-rnd)+Math.random()*base*rnd})}
+function makeLineup(){let used=new Set(),tc={}, chosen=[];function add(p){if(!p||used.has(p.id))return false;used.add(p.id);tc[p.team]=(tc[p.team]||0)+1;chosen.push(p);return true}
+let qb=pick(players.filter(p=>p.pos==="QB"),used,tc,1,rank.value);if(!qb)return null;add(qb);
+let qn=+qbStack.value;for(let i=0;i<qn;i++){let cand=players.filter(p=>["WR","TE"].includes(p.pos)&&p.team===qb.team);if(!add(pick(cand,used,tc,1,rank.value)))return null}
+let br=+bring.value;for(let i=0;i<br;i++){let cand=players.filter(p=>["WR","TE","RB"].includes(p.pos)&&p.team===qb.opp);if(!add(pick(cand,used,tc,1,rank.value)))return null}
+let ss=+secondStack.value;if(ss){let pool=players.filter(p=>["WR","TE"].includes(p.pos)&&!used.has(p.id)&&(tc[p.team]||0)<+maxTeam.value);let a=pick(pool,used,tc,1,rank.value);if(!add(a))return null;let pool2=pool.filter(p=>p.team!==a.team&&(!sameGame.value||p.game===a.game));for(let i=0;i<ss;i++){let b=pick(pool2,used,tc,1,rank.value);if(!add(b))return null}}
+for(let i=0;i<2;i++){let p=pick(players.filter(p=>p.pos==="RB"),used,tc,1,rank.value);if(!add(p))return null}
+for(let i=0;i<3;i++){let p=pick(players.filter(p=>p.pos==="WR"),used,tc,1,rank.value);if(!add(p))return null}
+let te=pick(players.filter(p=>p.pos==="TE"),used,tc,1,rank.value);if(!add(te))return null;
+let flex=pick(players.filter(p=>["RB","WR","TE"].includes(p.pos)),used,tc,1,rank.value);if(!add(flex))return null;
+let dst=pick(players.filter(p=>p.pos==="DST"),used,tc,1,rank.value);if(!add(dst))return null;
+if(avoid.checked&&chosen.some(p=>p.pos==="QB")&&chosen.some(p=>p.pos==="DST"&&p.team===qb.opp))return null;
+let sal=chosen.reduce((a,p)=>a+p.salary,0);if(sal>+cap.value||chosen.length!==9)return null;
+return {players:chosen,salary:sal,projection:chosen.reduce((a,p)=>a+p.proj,0),ceiling:chosen.reduce((a,p)=>a+p.ceil,0)}
+}
+function generate(){if(players.length<20)return alert("Load the sample pool or import at least 20 players.");results=[];let target=+num.value, tries=0, exposureLimit=Math.max(1,Math.floor(target*(+exposure.value/100)));let counts={};let seen=[];setStatus("Generating and simulating...");while(results.length<target&&tries<target*1000){tries++;let l=makeLineup();if(!l)continue;let key=l.players.map(p=>p.id).sort().join("|");if(seen.includes(key))continue;if(l.players.some(p=>(counts[p.id]||0)>=exposureLimit))continue;if(seen.length&&+unique.value>0){let maxCommon=Math.max(0,9-+unique.value);let common=l.players.filter(p=>results[results.length-1]?.players.some(q=>q.id===p.id)).length;if(common>maxCommon)continue}seen.push(key);l.players.forEach(p=>counts[p.id]=(counts[p.id]||0)+1);results.push(l)}
+if(!results.length)return setStatus("Could not build valid lineups. Relax one or more rules.");results.sort((a,b)=>scoreLineup(b)-scoreLineup(a));renderResults();setStatus("Generated "+results.length+" lineups after "+tries+" attempts.");document.querySelectorAll(".tabs button")[2].click()}
+function scoreLineup(l){let sim=0;let runs=+sims.value;for(let i=0;i<Math.min(runs,300);i++)sim+=l.players.reduce((s,p)=>{let sd=Math.max(1,(p.ceil-p.proj)*.45);let z=(Math.random()+Math.random()+Math.random()-1.5)*sd;return s+Math.max(0,p.proj+z)},0);return l.projection+(sim/Math.min(runs,300)-l.projection)*.35+(l.ceiling-l.projection)*.25}
+function renderResults(){resultsBox.innerHTML=results.map((l,i)=>`<div class="lineup"><div><strong>#${i+1}</strong> · $${l.salary.toLocaleString()} · <b>${l.projection.toFixed(1)} proj</b> · ${l.ceiling.toFixed(1)} ceil</div><div class="players">${l.players.map(p=>`<span class="pill">${p.pos} ${p.name}</span>`).join("")}</div></div>`).join("")}
+function downloadCSV(){if(!results.length)return alert("Generate lineups first.");let rows=[["Lineup","QB","RB1","RB2","WR1","WR2","WR3","TE","FLEX","DST","Salary","Projection","Ceiling"]];results.forEach((l,i)=>{let by=x=>{let p=l.players.filter(q=>q.pos===x);return p};let qb=by("QB")[0],rb=by("RB"),wr=by("WR"),te=by("TE"),dst=by("DST");let flex=l.players.find(p=>["RB","WR","TE"].includes(p.pos)&&![...rb,...wr,...te].includes(p));rows.push([i+1,qb?.name,rb[0]?.name,rb[1]?.name,wr[0]?.name,wr[1]?.name,wr[2]?.name,te[0]?.name,flex?.name,dst?.name,l.salary,l.projection.toFixed(2),l.ceiling.toFixed(2)])});let csv=rows.map(r=>r.map(x=>`"${String(x??"").replaceAll('"','""')}"`).join(",")).join("\n");let a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));a.download="nfl_dfs_lineups.csv";a.click()}
+function copyTop(){if(!results.length)return;let l=results[0];navigator.clipboard?.writeText(l.players.map(p=>`${p.pos}: ${p.name}`).join("\n")).then(()=>alert("Top lineup copied."))}
+loadSample();
+</script>
+</body>
+</html>
