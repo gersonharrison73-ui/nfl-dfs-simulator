@@ -550,13 +550,9 @@ chosen.push(pick(flexPool,1)[0]);
     const wrCount = chosen.filter(p => p.pos === "WR").length;
     const teCount = chosen.filter(p => p.pos === "TE").length;
     const dstCount = chosen.filter(p => p.pos === "DST").length;
-
-    if(qbCount !== 1) continue;
-    if(rbCount < 2) continue;
-    if(wrCount < 3) continue;
-    if(teCount < 1) continue;
-    if(dstCount !== 1) continue;
-
+    
+if(qbCount !== 1) continue;
+if(dstCount !== 1) continue;
     // Avoid QB vs DST
     const dst = chosen.find(p => p.pos === "DST");
 
