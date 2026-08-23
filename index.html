@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NFL DFS Simulator</title>
+
+<style>
+:root{
+  --bg:#0b1020;
+  --card:#151c31;
+  --muted:#9aa5b5;
+  --text:#f4f7fb;
+  --accent:#4f8cff;
+  --green:#24c77a;
+  --border:#28334d;
+}
+*{box-sizing:border-box}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
+  font-family:Arial,sans-serif;
+}
+main{
+  max-width:760px;
+  margin:auto;
+  padding:18px;
+}
+h1{font-size:27px;margin:0 0 6px}
+h2{font-size:18px;margin:0 0 14px}
+.small{font-size:12px;color:var(--muted)}
+.card{
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:16px;
+  padding:16px;
+  margin-bottom:14px;
+}
+.grid{
+  display:grid;
+  grid-template-columns:repeat(2,1fr);
+  gap:10px;
+}
+label{
+  display:block;
+  font-size:12px;
+  color:var(--muted);
+  margin-bottom:5px;
+}
+input,select,button{
+  width:100%;
+  font:inherit;
+}
+input,select{
+  background:#0e1527;
+  color:var(--text);
+  border:1px solid var(--border);
+  border-radius:10px;
+  padding:10px;
+}
+button{
+  border:0;
+  border-radius:12px;
+  padding:12px;
+  font-weight:bold;
+  cursor:pointer;
+  background:var(--accent);
+  color:white;
+}
+button.secondary{background:#273149}
+button.green{background:var(--green);color:#07130d}
+.buttons{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+}
+.status{
+  padding:10px;
+  background:#0e1527;
+  border-radius:10px;
+  color:#b8c5d8;
+}
+.lineup{
+  background:#0e1527;
+  border:1px solid var(--border);
+  border-radius:12px;
+  padding:12px;
+  margin-top:10px;
+}
+.player{
+  display:flex;
+  justify-content:space-between;
+  padding:6px 0;
+  border-bottom:1px solid #222c42;
+}
+.player:last-child{border-bottom:0}
+.badge{
+  padding:3px 7px;
+  border-radius:7px;
+  background:#26334e;
+  font-size:11px;
+}
+table{
+  width:100%;
+  border-collapse:collapse;
+  font-size:12px;
+}
+th,td{
+  padding:7px 4px;
+  border-bottom:1px solid #263047;
+  text-align:left;
+}
+@media(max-width:560px){
+  .grid{grid-template-columns:1fr}
+}
+</style>
+</head>
+
+<body>
+<main>
+
+<div class="card">
+  <h1>🏈 NFL DFS Simulator</h1>
+  <div class="small">
+    DraftKings-style lineup generator, stacking rules and player simulation.
+  </div>
+</div>
+
+<div class="card">
+<h2>Lineup Settings</h2>
+
+<div class="grid">
+
+<div>
+<label>Lineups</label>
+<input id="num" type="number" value="20" min="1" max="150">
+</div>
+
+<div>
+<label>Salary Cap</label>
+<input id="cap" type="number" value="50000">
+</div>
+
+<div>
+<label>QB Stack</label>
+<select id="qbStack">
+<option value="0">0</option>
+<option value="1" selected>1</option>
+<option value="2">2</option>
+<option value="3">3</option>
+</select>
+</div>
+
+<div>
+<label>Bring Back</label>
+<select id="bring">
+<option value="0">0</option>
+<option value="1" selected>1</option>
+<option value="2">2</option>
+</select>
+</div>
+
+<div>
+<label>Simulation Runs</label>
+<input id="sims" type="number" value="100" min="1" max="300">
+</div>
+
+<div>
+<label>Max Player Exposure %</label>
+<input id="exposure" type="number" value="60" min="1" max="100">
+</div>
+
+<div>
+<label>Minimum Unique Players</label>
+<select id="unique">
+<option value="0">0</option>
+<option value="1">1</option>
+<option value="2" selected>2</option>
+<option value="3">3</option>
+<option value="4">4</option>
+<option value="5">5</option>
+</select>
+</div>
+
+<div>
+<label>QB vs DST Rule</label>
+<select id="avoid">
+<option value="yes" selected>Avoid</option>
+<option value="no">Allow</option>
+</select>
+</div>
+
+</div>
+</div>
+
+<div class="card">
+<h2>Player Pool</h2>
+
+<div class="buttons">
+<button onclick="loadSample()">Load Sample Pool</button>
+<button class="secondary" onclick="clearPlayers()">Clear Pool</button>
+</div>
+
+<div style="margin-top:12px">
+<input id="file" type="file" accept=".csv">
+</div>
+
+<div id="poolStatus" class="status" style="margin-top:12px">
+Sample player pool loaded.
+</div>
+</div>
+
+<div class="card">
+<h2>Generate & Simulate</h2>
+
+<div class="buttons">
+<button class="green" onclick="generate()">Generate Lineups</button>
+<button class="secondary" onclick="downloadCSV()">Download CSV</button>
+</div>
+
+<div style="margin-top:10px">
+<button class="secondary" onclick="copyTop()">Copy Top Lineup</button>
+</div>
+
+<div id="status" class="status" style="margin-top:12px">
+Ready.
+</div>
+</div>
+
+<div class="card">
+<h2>Results</h2>
+<div id="results">
+No lineups generated yet.
+</div>
+</div>
+
+</main>
+
+<script>
+
+let players=[];
+let results=[];
+
+function samplePlayers(){
+
+return [
+
+{id:"1",name:"Josh Allen",pos:"QB",team:"BUF",opp:"MIA",salary:7600,proj:23.5,ceil:31},
+{id:"2",name:"Lamar Jackson",pos:"QB",team:"BAL",opp:"CIN",salary:7400,proj:22.8,ceil:30},
+{id:"3",name:"Jalen Hurts",pos:"QB",team:"PHI",opp:"DAL",salary:7200,proj:21.7,ceil:29},
+{id:"4",name:"Patrick Mahomes",pos:"QB",team:"KC",opp:"LV",salary:7000,proj:20.9,ceil:28},
+
+{id:"5",name:"Christian McCaffrey",pos:"RB",team:"SF",opp:"ARI",salary:8200,proj:21.4,ceil:30},
+{id:"6",name:"Breece Hall",pos:"RB",team:"NYJ",opp:"NE",salary:6900,proj:17.8,ceil:26},
+{id:"7",name:"Bijan Robinson",pos:"RB",team:"ATL",opp:"CAR",salary:6800,proj:18.1,ceil:27},
+{id:"8",name:"Saquon Barkley",pos:"RB",team:"PHI",opp:"DAL",salary:6700,proj:17.3,ceil:25},
+{id:"9",name:"Jonathan Taylor",pos:"RB",team:"IND",opp:"HOU",salary:6400,proj:16.5,ceil:24},
+
+{id:"10",name:"Tyreek Hill",pos:"WR",team:"MIA",opp:"BUF",salary:7900,proj:20.2,ceil:30},
+{id:"11",name:"CeeDee Lamb",pos:"WR",team:"DAL",opp:"PHI",salary:7700,proj:19.8,ceil:29},
+{id:"12",name:"A.J. Brown",pos:"WR",team:"PHI",opp:"DAL",salary:7100,proj:17.9,ceil:27},
+{id:"13",name:"Amon-Ra St. Brown",pos:"WR",team:"DET",opp:"CHI",salary:7000,proj:18.3,ceil:27},
+{id:"14",name:"Puka Nacua",pos:"WR",team:"LAR",opp:"SEA",salary:6800,proj:17.1,ceil:26},
+{id:"15",name:"Garrett Wilson",pos:"WR",team:"NYJ",opp:"NE",salary:6200,proj:15.7,ceil:24},
+{id:"16",name:"DeVonta Smith",pos:"WR",team:"PHI",opp:"DAL",salary:5900,proj:14.6,ceil:22},
+
+{id:"17",name:"Travis Kelce",pos:"TE",team:"KC",opp:"LV",salary:6100,proj:14.8,ceil:23},
+{id:"18",name:"Sam LaPorta",pos:"TE",team:"DET",opp:"CHI",salary:5700,proj:13.8,ceil:22},
+{id:"19",name:"George Kittle",pos:"TE",team:"SF",opp:"ARI",salary:5600,proj:13.5,ceil:22},
+{id:"20",name:"T.J. Hockenson",pos:"TE",team:"MIN",opp:"GB",salary:5300,proj:12.9,ceil:21},
+
+{id:"21",name:"49ers DST",pos:"DST",team:"SF",opp:"ARI",salary:3600,proj:8.2,ceil:14},
+{id:"22",name:"Ravens DST",pos:"DST",team:"BAL",opp:"CIN",salary:3500,proj:8.0,ceil:14},
+{id:"23",name:"Jets DST",pos:"DST",team:"NYJ",opp:"NE",salary:3300,proj:7.5,ceil:13},
+{id:"24",name:"Chiefs DST",pos:"DST",team:"KC",opp:"LV",salary:3200,proj:7.2,ceil:13}
+
+];
+
+}
+
+function loadSample(){
+
+players=samplePlayers();
+
+document.getElementById("poolStatus").innerText=
+"Loaded "+players.length+" sample players.";
+
+}
+
+function clearPlayers(){
+
+players=[];
+
+document.getElementById("poolStatus").innerText=
+"Player pool cleared.";
+
+}
+
+document.getElementById("file").addEventListener("change",function(e){
+
+const file=e.target.files[0];
+
+if(!file)return;
+
+const reader=new FileReader();
+
+reader.onload=function(){
+
+const lines=reader.result.trim().split(/\r?\n/);
+
+const header=lines[0].split(",").map(x=>x.trim());
+
+const idx={
+name:header.findIndex(x=>x.toLowerCase()=="name"),
+pos:header.findIndex(x=>x.toLowerCase()=="position" || x.toLowerCase()=="pos"),
+salary:header.findIndex(x=>x.toLowerCase()=="salary"),
+team:header.findIndex(x=>x.toLowerCase().includes("team")),
+proj:header.findIndex(x=>x.toLowerCase().includes("projection")),
+id:header.findIndex(x=>x.toLowerCase()=="id")
+};
+
+players=lines.slice(1).map((line,i)=>{
+
+const c=line.split(",");
+
+return {
+id:idx.id>=0?c[idx.id]:(i+1),
+name:c[idx.name]||"Player "+(i+1),
+pos:(c[idx.pos]||"WR").toUpperCase(),
+team:idx.team>=0?c[idx.team]:"",
+opp:"",
+salary:+(c[idx.salary]||0),
+proj:+(c[idx.proj]||0),
+ceil:+(c[idx.proj]||0)*1.35
+};
+
+}).filter(p=>p.salary>0);
+
+document.getElementById("poolStatus").innerText=
+"Imported "+players.length+" players.";
+
+};
+
+reader.readAsText(file);
+
+});
+
+function randNormal(){
+
+return (
+Math.random()+
+Math.random()+
+Math.random()
+-1.5
+);
+
+}
+
+function simulatePlayer(p){
+
+let sd=Math.max(1,(p.ceil-p.proj)*.45);
+
+return Math.max(
+0,
+p.proj + randNormal()*sd
+);
+
+}
+
+function scoreLineup(lineup){
+
+let runs=Math.min(
+Math.max(1,+document.getElementById("sims").value),
+300
+);
+
+let total=0;
+
+for(let i=0;i<runs;i++){
+
+let score=0;
+
+lineup.players.forEach(p=>{
+score+=simulatePlayer(p);
+});
+
+total+=score;
+
+}
+
+let avg=total/runs;
+
+return avg+
+(lineup.ceiling-avg)*.25;
+
+}
+
+function pick(arr,count){
+
+let copy=[...arr].sort(
+(a,b)=>(b.proj+Math.random()*8)-
+(a.proj+Math.random()*8)
+);
+
+return copy.slice(0,count);
+
+}
+
+function validLineup(chosen){
+
+if(chosen.length!==9)return false;
+
+let salary=chosen.reduce((a,p)=>a+p.salary,0);
+
+let cap=+document.getElementById("cap").value;
+
+if(salary>cap)return false;
+
+let qb=chosen.find(p=>p.pos=="QB");
+let dst=chosen.find(p=>p.pos=="DST");
+
+if(document.getElementById("avoid").value=="yes" &&
+qb && dst && qb.team==dst.team){
+
+return false;
+
+}
+
+let qbs=chosen.filter(p=>p.pos=="QB").length;
+let rbs=chosen.filter(p=>p.pos=="RB").length;
+let wrs=chosen.filter(p=>p.pos=="WR").length;
+let tes=chosen.filter(p=>p.pos=="TE").length;
+let dsts=chosen.filter(p=>p.pos=="DST").length;
+
+return qbs==1 &&
+rbs>=2 &&
+wrs>=3 &&
+tes>=1 &&
+dsts==1;
+
+}
+
+function makeLineup(){
+
+let qb=pick(players.filter(p=>p.pos=="QB"),1)[0];
+
+if(!qb)return null;
+
+let chosen=[qb];
+
+let stackCount=+document.getElementById("qbStack").value;
+
+let teammates=players.filter(
+p=>p.team==qb.team &&
+["WR","TE"].includes(p.pos)
+);
+
+chosen.push(...pick(teammates,Math.min(stackCount,teammates.length)));
+
+let bring=+document.getElementById("bring").value;
+
+let opponents=players.filter(
+p=>p.team==qb.opp &&
+["WR","TE","RB"].includes(p.pos)
+);
+
+chosen.push(...pick(opponents,Math.min(bring,opponents.length)));
+
+function addPosition(pos,count){
+
+let available=players.filter(
+p=>p.pos==pos && !chosen.some(x=>x.id==p.id)
+);
+
+chosen.push(...pick(available,count));
+
+}
+
+addPosition("RB",2);
+addPosition("WR",3);
+addPosition("TE",1);
+addPosition("DST",1);
+
+while(chosen.length>9){
+
+chosen.pop();
+
+}
+
+if(chosen.length!==9)return null;
+
+if(!validLineup(chosen)){
+
+let pool=[...players].sort(
+(a,b)=>(b.proj+Math.random()*5)-
+(a.proj+Math.random()*5)
+);
+
+for(let attempt=0;attempt<100;attempt++){
+
+let test=[qb];
+
+for(let p of pool){
+
+if(test.length>=9)break;
+
+if(test.some(x=>x.id==p.id))continue;
+
+test.push(p);
+
+if(validLineup(test))break;
+
+}
+
+if(validLineup(test)){
+chosen=test;
+break;
+}
+
+}
+
+}
+
+if(!validLineup(chosen))return null;
+
+let salary=chosen.reduce((a,p)=>a+p.salary,0);
+
+let projection=chosen.reduce((a,p)=>a+p.proj,0);
+
+let ceiling=chosen.reduce((a,p)=>a+p.ceil,0);
+
+return {
+players:chosen,
+salary,
+projection,
+ceiling,
+score:0
+};
+
+}
+
+function generate(){
+
+if(players.length<20){
+
+loadSample();
+
+}
+
+results=[];
+
+let target=Math.min(
+Math.max(1,+document.getElementById("num").value),
+150
+);
+
+let exposure=Math.max(
+1,
+Math.floor(
+target*(+document.getElementById("exposure").value/100)
+)
+);
+
+let unique=+document.getElementById("unique").value;
+
+let counts={};
+let seen=[];
+
+let tries=0;
+
+document.getElementById("status").innerText=
+"Generating and simulating...";
+
+while(results.length<target && tries<target*1500){
+
+tries++;
+
+let lineup=makeLineup();
+
+if(!lineup)continue;
+
+let key=lineup.players
+.map(p=>p.id)
+.sort()
+.join("|");
+
+if(seen.includes(key))continue;
+
+if(lineup.players.some(
+p=>(counts[p.id]||0)>=exposure
+))continue;
+
+if(seen.length){
+
+let previous=results[results.length-1];
+
+let common=lineup.players.filter(
+p=>previous.players.some(x=>x.id==p.id)
+).length;
+
+if(common>9-unique)continue;
+
+}
+
+seen.push(key);
+
+lineup.score=scoreLineup(lineup);
+
+lineup.players.forEach(
+p=>counts[p.id]=(counts[p.id]||0)+1
+);
+
+results.push(lineup);
+
+}
+
+results.sort((a,b)=>b.score-a.score);
+
+renderResults();
+
+document.getElementById("status").innerText=
+"Generated "+results.length+
+" lineups after "+tries+" attempts.";
+
+}
+
+function renderResults(){
+
+if(!results.length){
+
+document.getElementById("results").innerText=
+"No valid lineups found.";
+
+return;
+
+}
+
+let html="";
+
+results.slice(0,20).forEach((l,i)=>{
+
+html+=`
+<div class="lineup">
+<div>
+<strong>#${i+1}</strong>
+&nbsp; $${l.salary.toLocaleString()}
+&nbsp; <b>${l.score.toFixed(1)} sim pts</b>
+</div>
+
+<div class="small">
+Projection: ${l.projection.toFixed(1)}
+&nbsp; Ceiling: ${l.ceiling.toFixed(1)}
+</div>
+
+${l.players.map(p=>`
+<div class="player">
+<span>
+<span class="badge">${p.pos}</span>
+${p.name}
+</span>
+<span>${p.team}</span>
+</div>
+`).join("")}
+
+</div>
+`;
+
+});
+
+document.getElementById("results").innerHTML=html;
+
+}
+
+function downloadCSV(){
+
+if(!results.length){
+
+alert("Generate lineups first.");
+
+return;
+
+}
+
+let rows=[
+[
+"Lineup",
+"QB",
+"RB1",
+"RB2",
+"WR1",
+"WR2",
+"WR3",
+"TE",
+"FLEX",
+"DST",
+"Salary",
+"Projection",
+"Ceiling",
+"Sim Score"
+]
+];
+
+results.forEach((l,i)=>{
+
+function by(pos){
+
+return l.players.filter(p=>p.pos==pos);
+
+}
+
+let qb=by("QB")[0];
+let rb=by("RB");
+let wr=by("WR");
+let te=by("TE");
+let dst=by("DST")[0];
+
+let used=[
+qb,
+...rb,
+...wr,
+...te,
+dst
+];
+
+let flex=l.players.find(
+p=>["RB","WR","TE"].includes(p.pos) &&
+!used.includes(p)
+);
+
+rows.push([
+i+1,
+qb?.name||"",
+rb[0]?.name||"",
+rb[1]?.name||"",
+wr[0]?.name||"",
+wr[1]?.name||"",
+wr[2]?.name||"",
+te[0]?.name||"",
+flex?.name||"",
+dst?.name||"",
+l.salary,
+l.projection.toFixed(2),
+l.ceiling.toFixed(2),
+l.score.toFixed(2)
+]);
+
+});
+
+let csv=rows.map(
+r=>r.map(x=>`"${String(x).replaceAll('"','""')}"`).join(",")
+).join("\n");
+
+let a=document.createElement("a");
+
+a.href=URL.createObjectURL(
+new Blob([csv],{type:"text/csv"})
+);
+
+a.download="nfl_dfs_lineups.csv";
+
+a.click();
+
+}
+
+function copyTop(){
+
+if(!results.length){
+
+alert("Generate lineups first.");
+
+return;
+
+}
+
+let l=results[0];
+
+let text=l.players.map(
+p=>`${p.pos}: ${p.name}`
+).join("\n");
+
+navigator.clipboard?.writeText(text)
+.then(()=>alert("Top lineup copied."));
+
+}
+
+loadSample();
+
+</script>
+</body>
+</html>
