@@ -1,1 +1,0 @@
-# nfl-dfs-simulator
