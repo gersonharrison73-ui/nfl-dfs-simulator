@@ -113,7 +113,40 @@ function loadSample(){players=sample.map(p=>({...p,id:crypto.randomUUID()}));ren
 function setStatus(s){document.getElementById("status").textContent=s}
 function renderPool(){document.getElementById("count").textContent="("+players.length+" players)";document.getElementById("playerRows").innerHTML=players.map((p,i)=>`<div style="padding:7px 0;border-bottom:1px solid var(--line)"><b>${p.name}</b> <span class="pill">${p.pos}</span><span class="pill">${p.team}</span> $${p.salary.toLocaleString()} · ${p.proj} pts <button class="danger" style="float:right;padding:5px 8px" onclick="players.splice(${i},1);renderPool()">×</button></div>`).join("")}
 function addPlayer(){let p={name:pn.value.trim(),pos:pp.value.trim().toUpperCase(),team:pt.value.trim().toUpperCase(),opp:po.value.trim().toUpperCase(),salary:+ps.value,proj:+px.value,ceil:+pc.value||(+px.value*1.4),game:pg.value.trim().toUpperCase(),id:crypto.randomUUID()};if(!p.name||!p.pos||!p.team||!p.salary||!p.proj)return alert("Enter name, position, team, salary and projection.");players.push(p);["pn","pp","pt","po","ps","px","pc","pg"].forEach(x=>document.getElementById(x).value="");renderPool()}
-function parseCSVLine(line){let out=[],cur="",q=false;for(let i=0;i<line.length;i++){let c=line[i];if(c==="\\\""){if(q&&line[i+1]==="\\\""){cur+="\\\"";i++;}else q=!q}else if(c===","&&!q){out.push(cur.trim());cur=""}else cur+=c}out.push(cur.trim());return out}
+function parseCSVLine(line){let out=[],cur="",q=false;for(let i=0;i<line.length;i++){let c=line[i];if(c==='"'){if(q&&line[i+1]==='"'){cur+='"';i++;}else q=!q}else if(c===','&&!q){out.push(cur.trim());cur=""}else cur+=c}out.push(cur.trim());return out}
+function importCSV(e){
+  let f=e.target.files[0]; if(!f)return;
+  let r=new FileReader();
+  r.onload=()=>{
+    try{
+      let lines=r.result.replace(/^\\uFEFF/,"").split(/\\r?\\n/).filter(x=>x.trim()!=="");
+      // DraftKings exports have 10 empty columns before the real player header.
+      let idx=lines.findIndex(x=>{let a=parseCSVLine(x).map(v=>v.toLowerCase());return a.includes("position")&&a.includes("name + id")&&a.includes("salary")&&a.includes("game info")&&a.includes("teamabbrev")});
+      if(idx<0){alert("I couldn't find the DraftKings player header. Make sure you selected the DraftKings NFL salaries CSV.");return}
+      let rawHead=parseCSVLine(lines[idx]).map(x=>x.trim().toLowerCase());
+      let base=rawHead.indexOf("position");
+      let head=rawHead.slice(base);
+      let data=[];
+      for(let i=idx+1;i<lines.length;i++){
+        let a=parseCSVLine(lines[i]);
+        if(a.length<base+head.length)continue;
+        let vals=a.slice(base), o={}; head.forEach((h,j)=>o[h]=vals[j]??"");
+        let pos=(o.position||o.pos||"").toUpperCase();
+        let game=(o["game info"]||o.game||"").trim();
+        let team=(o.teamabbrev||o.team||"").trim().toUpperCase();
+        let opp=(o.opponent||o.opp||"").trim().toUpperCase();
+        if(!opp&&game.includes("@")){let m=game.split(/\\s+/)[0].split("@");if(m.length===2)opp=team===m[0]?m[1]:m[0]}
+        let proj=parseFloat(o.avgpointspergame||o.projection||o.proj||0)||0;
+        let salary=parseInt(String(o.salary||"").replace(/[$,]/g,""),10)||0;
+        if(o.name&&salary&&pos)data.push({name:o.name.trim(),pos,team,opp,salary,proj,ceil:proj*1.45,game,id:crypto.randomUUID()});
+      }
+      if(!data.length){alert("The DraftKings header was found, but no player rows were imported.");return}
+      players=data;renderPool();setStatus("✅ DraftKings CSV imported: "+players.length+" players.");document.querySelectorAll(".tabs button")[1].click();
+    }catch(err){console.error(err);alert("CSV import error: "+err.message)}
+    e.target.value="";
+  };
+  r.readAsText(f);
+}
 function importCSV(e){
   let f=e.target.files[0]; if(!f)return;
   let r=new FileReader();
