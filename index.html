@@ -262,13 +262,13 @@ return [
 {id:"12",name:"A.J. Brown",pos:"WR",team:"PHI",opp:"DAL",salary:6600,proj:17.9,ceil:27},
 {id:"13",name:"Amon-Ra St. Brown",pos:"WR",team:"DET",opp:"CHI",salary:6500,proj:18.3,ceil:27}
 {id:"14",name:"Puka Nacua",pos:"WR",team:"LAR",opp:"SEA",salary:6200,proj:17.1,ceil:26},
-{id:"15",name:"Garrett Wilson",pos:"WR",team:"NYJ",opp:"NE",salary:5500,proj:15.7,ceil:24},
-{id:"16",name:"DeVonta Smith",pos:"WR",team:"PHI",opp:"DAL",salary:5200,proj:14.6,ceil:22},
+{id:"15",name:"Garrett Wilson",pos:"WR",team:"NYJ",opp:"NE",salary:5000,proj:15.7,ceil:24},
+{id:"16",name:"DeVonta Smith",pos:"WR",team:"PHI",opp:"DAL",salary:4500,proj:14.6,ceil:22},
 
 {id:"17",name:"Travis Kelce",pos:"TE",team:"KC",opp:"LV",salary:5600,proj:14.8,ceil:23},
 {id:"18",name:"Sam LaPorta",pos:"TE",team:"DET",opp:"CHI",salary:5000,proj:13.8,ceil:22},
-{id:"19",name:"George Kittle",pos:"TE",team:"SF",opp:"ARI",salary:4900,proj:13.5,ceil:22},
-{id:"20",name:"T.J. Hockenson",pos:"TE",team:"MIN",opp:"GB",salary:4600,proj:12.9,ceil:21},
+{id:"19",name:"George Kittle",pos:"TE",team:"SF",opp:"ARI",salary:3500,proj:13.5,ceil:22},
+{id:"20",name:"T.J. Hockenson",pos:"TE",team:"MIN",opp:"GB",salary:3000,proj:12.9,ceil:21},
 
 {id:"21",name:"49ers DST",pos:"DST",team:"SF",opp:"ARI",salary:3200,proj:8.2,ceil:14},
 {id:"22",name:"Ravens DST",pos:"DST",team:"BAL",opp:"CIN",salary:3000,proj:8.0,ceil:14},
@@ -516,9 +516,11 @@ function makeLineup(){
     if(!fillPosition("TE",1)) continue;
     if(!fillPosition("DST",1)) continue;
 
-    // At this point we need exactly 8 players.
-    // The 9th player is FLEX.
-    if(chosen.length !== 8) continue;
+  // At this point we need exactly 8 players.
+// Stack and bring-back players are already included
+// in the RB/WR/TE position requirements.
+// The 9th player is FLEX.
+if(chosen.length !== 8) continue;
 
   const currentSalary = chosen.reduce(
   (total,p) => total + p.salary,
