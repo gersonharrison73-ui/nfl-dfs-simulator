@@ -398,13 +398,27 @@ return avg+
 
 function pick(arr,count){
 
-let copy=[...arr].sort(
-(a,b)=>(b.proj+Math.random()*8)-
-(a.proj+Math.random()*8)
-);
+  let copy=[...arr].sort((a,b)=>{
 
-return copy.slice(0,count);
+    const aValue = (a.proj / Math.max(1,a.salary)) * 1000;
+    const bValue = (b.proj / Math.max(1,b.salary)) * 1000;
 
+    const aScore =
+      a.proj * 0.65 +
+      a.ceil * 0.20 +
+      aValue * 0.15 +
+      Math.random() * 2;
+
+    const bScore =
+      b.proj * 0.65 +
+      b.ceil * 0.20 +
+      bValue * 0.15 +
+      Math.random() * 2;
+
+    return bScore - aScore;
+  });
+
+  return copy.slice(0,count);
 }
 
 function validLineup(chosen){
@@ -443,101 +457,137 @@ dsts==1;
 
 function makeLineup(){
 
-let qb=pick(players.filter(p=>p.pos=="QB"),1)[0];
+  const cap = +document.getElementById("cap").value;
+  const stackCount = Math.min(3, +document.getElementById("qbStack").value);
+  const bringCount = Math.min(2, +document.getElementById("bring").value);
 
-if(!qb)return null;
+  const qbs = players.filter(p => p.pos === "QB");
 
-let chosen=[qb];
+  for(let attempt=0; attempt<500; attempt++){
 
-let stackCount=+document.getElementById("qbStack").value;
+    const qb = pick(qbs,1)[0];
+    if(!qb) continue;
+    let chosen = [qb];
 
-let teammates=players.filter(
-p=>p.team==qb.team &&
-["WR","TE"].includes(p.pos)
+    // QB STACK
+    const stackPool = players.filter(p =>
+      p.team === qb.team &&
+      ["WR","TE"].includes(p.pos) &&
+      !chosen.some(x => x.id === p.id)
+    );
+
+    if(stackPool.length < stackCount) continue;
+
+    chosen.push(...pick(stackPool,stackCount));
+
+    // BRING-BACK
+    const bringPool = players.filter(p =>
+      p.team === qb.opp &&
+      ["RB","WR","TE"].includes(p.pos) &&
+      !chosen.some(x => x.id === p.id)
+    );
+
+    if(bringPool.length < bringCount) continue;
+
+    chosen.push(...pick(bringPool,bringCount));
+
+    // Fill required positions
+    function fillPosition(pos,minCount){
+
+      const current = chosen.filter(p => p.pos === pos).length;
+      const need = minCount - current;
+
+      if(need <= 0) return true;
+
+      const pool = players.filter(p =>
+        p.pos === pos &&
+        !chosen.some(x => x.id === p.id)
+      );
+
+      if(pool.length < need) return false;
+
+      chosen.push(...pick(pool,need));
+
+      return true;
+    }
+
+    if(!fillPosition("RB",2)) continue;
+    if(!fillPosition("WR",3)) continue;
+    if(!fillPosition("TE",1)) continue;
+    if(!fillPosition("DST",1)) continue;
+
+    // At this point we need exactly 8 players.
+    // The 9th player is FLEX.
+    if(chosen.length !== 8) continue;
+
+  const currentSalary = chosen.reduce(
+  (total,p) => total + p.salary,
+  0
 );
 
-chosen.push(...pick(teammates,Math.min(stackCount,teammates.length)));
-
-let bring=+document.getElementById("bring").value;
-
-let opponents=players.filter(
-p=>p.team==qb.opp &&
-["WR","TE","RB"].includes(p.pos)
+const flexPool = players.filter(p =>
+  ["RB","WR","TE"].includes(p.pos) &&
+  !chosen.some(x => x.id === p.id) &&
+  currentSalary + p.salary <= cap
 );
 
-chosen.push(...pick(opponents,Math.min(bring,opponents.length)));
+if(!flexPool.length) continue;
 
-function addPosition(pos,count){
+chosen.push(pick(flexPool,1)[0]);
 
-let available=players.filter(
-p=>p.pos==pos && !chosen.some(x=>x.id==p.id)
-);
+    // Final validation
+    if(chosen.length !== 9) continue;
 
-chosen.push(...pick(available,count));
+    const salary = chosen.reduce(
+      (total,p) => total + p.salary,
+      0
+    );
 
-}
+    if(salary > cap) continue;
 
-addPosition("RB",2);
-addPosition("WR",3);
-addPosition("TE",1);
-addPosition("DST",1);
+    const qbCount = chosen.filter(p => p.pos === "QB").length;
+    const rbCount = chosen.filter(p => p.pos === "RB").length;
+    const wrCount = chosen.filter(p => p.pos === "WR").length;
+    const teCount = chosen.filter(p => p.pos === "TE").length;
+    const dstCount = chosen.filter(p => p.pos === "DST").length;
 
-while(chosen.length>9){
+    if(qbCount !== 1) continue;
+    if(rbCount < 2) continue;
+    if(wrCount < 3) continue;
+    if(teCount < 1) continue;
+    if(dstCount !== 1) continue;
 
-chosen.pop();
+    // Avoid QB vs DST
+    const dst = chosen.find(p => p.pos === "DST");
 
-}
+    if(
+      document.getElementById("avoid").value === "yes" &&
+      dst &&
+      dst.team === qb.team
+    ){
+      continue;
+    }
 
-if(chosen.length!==9)return null;
+    const projection = chosen.reduce(
+      (total,p) => total + p.proj,
+      0
+    );
 
-if(!validLineup(chosen)){
+    const ceiling = chosen.reduce(
+      (total,p) => total + p.ceil,
+      0
+    );
 
-let pool=[...players].sort(
-(a,b)=>(b.proj+Math.random()*5)-
-(a.proj+Math.random()*5)
-);
+    return {
+      players: chosen,
+      salary,
+      projection,
+      ceiling,
+      score: 0
+    };
+  }
 
-for(let attempt=0;attempt<100;attempt++){
-
-let test=[qb];
-
-for(let p of pool){
-
-if(test.length>=9)break;
-
-if(test.some(x=>x.id==p.id))continue;
-
-test.push(p);
-
-if(validLineup(test))break;
-
-}
-
-if(validLineup(test)){
-chosen=test;
-break;
-}
-
-}
-
-}
-
-if(!validLineup(chosen))return null;
-
-let salary=chosen.reduce((a,p)=>a+p.salary,0);
-
-let projection=chosen.reduce((a,p)=>a+p.proj,0);
-
-let ceiling=chosen.reduce((a,p)=>a+p.ceil,0);
-
-return {
-players:chosen,
-salary,
-projection,
-ceiling,
-score:0
-};
-
+  return null;
 }
 
 function generate(){
