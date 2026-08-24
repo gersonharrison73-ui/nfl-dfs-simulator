@@ -215,7 +215,8 @@ Sample player pool loaded.
 <h2>Generate & Simulate</h2>
 
 <div class="buttons">
-<button class="green" onclick="generate()">Generate Lineups</button>
+<button class="green"
+onclick="try{generate()}catch(e){alert('Generate error: '+e.message)}">Generate Lineups</button>
 <button class="secondary" onclick="downloadCSV()">Download CSV</button>
 </div>
 
