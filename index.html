@@ -215,7 +215,7 @@ Sample player pool loaded.
 <h2>Generate & Simulate</h2>
 
 <div class="buttons">
-<button class="green" id="generateBtn">
+<button class="green" id="generateBtn" onclick="generate()">
 Generate Lineups</button>
 <button class="secondary" onclick="downloadCSV()">Download CSV</button>
 </div>
@@ -833,14 +833,6 @@ navigator.clipboard?.writeText(text)
 
 }
   
-document.getElementById("generateBtn").addEventListener("click", () => {
-  try {
-    generate();
-  } catch (e) {
-    alert("Generate error: " + e.message);
-  }
-});
-
 loadSample();
 
 </script>
