@@ -216,7 +216,7 @@ Sample player pool loaded.
 
 <div class="buttons">
 <button class="green"
-onclick="try{generate()}catch(e){alert('Generate error: '+e.message)}">Generate Lineups</button>
+onclick="try{window.generate()}catch(e){alert('Generate error: '+e.message)}">Generate Lineups</button>
 <button class="secondary" onclick="downloadCSV()">Download CSV</button>
 </div>
 
@@ -834,7 +834,7 @@ navigator.clipboard?.writeText(text)
 .then(()=>alert("Top lineup copied."));
 
 }
-
+window.generate = generate;
 loadSample();
 
 </script>
