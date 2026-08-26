@@ -322,12 +322,16 @@ return [
 }
 
 function loadSample(){
+    players = samplePlayers();
 
-players=samplePlayers();
+    document.getElementById("poolStatus").innerText =
+        "Loaded " + players.length + " sample players.";
 
-document.getElementById("poolStatus").innerText=
-"Loaded "+players.length+" sample players.";
+    document.getElementById("status").innerText =
+        "Sample player pool loaded. Ready to generate.";
 
+    document.getElementById("results").innerHTML =
+        "No lineups generated yet.";
 }
 
 function clearPlayers(){
