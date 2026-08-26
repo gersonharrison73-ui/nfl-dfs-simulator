@@ -531,10 +531,34 @@ function makeLineup(){
 
     if(bringPool.length < bringCount) continue;
 
-    chosen.push(...pick(bringPool,bringCount));
+    chosen.push(...pick(bringPool, bringCount));
 
-    // Fill required positions
-    function fillPosition(pos,minCount){
+// Make sure stack/bring-back selections
+// do not exceed the DraftKings position limits.
+const positionLimits = {
+    QB: 1,
+    RB: 2,
+    WR: 3,
+    TE: 1,
+    DST: 1
+};
+
+const positionCounts = {};
+
+chosen.forEach(p => {
+    positionCounts[p.pos] = (positionCounts[p.pos] || 0) + 1;
+});
+
+if(
+    Object.keys(positionCounts).some(
+        pos => (positionCounts[pos] || 0) > positionLimits[pos]
+    )
+){
+    continue;
+}
+
+// Fill required positions
+function fillPosition(pos,minCount){
 
       const current = chosen.filter(p => p.pos === pos).length;
       const need = minCount - current;
@@ -659,6 +683,13 @@ let seen=[];
 
 let tries=0;
 
+let failReasons={
+    makeLineup:0,
+    duplicate:0,
+    exposure:0,
+    unique:0
+};
+
 document.getElementById("status").innerText=
 "Generating and simulating...";
 
@@ -668,7 +699,10 @@ tries++;
 
 let lineup=makeLineup();
 
-if(!lineup)continue;
+if(!lineup){
+    failReasons.makeLineup++;
+    continue;
+}
 
 let key=lineup.players
 .map(p=>p.id)
@@ -678,8 +712,11 @@ let key=lineup.players
 if(seen.includes(key))continue;
 
 if(lineup.players.some(
-p=>(counts[p.id]||0)>=exposure
-))continue;
+    p=>(counts[p.id]||0)>=exposure
+)){
+    failReasons.exposure++;
+    continue;
+}
 
 if(seen.length){
 
@@ -689,8 +726,9 @@ let common=lineup.players.filter(
 p=>previous.players.some(x=>x.id==p.id)
 ).length;
 
-if(common>9-unique)continue;
-
+if(common>9-unique){
+    failReasons.unique++;
+    continue;
 }
 
 seen.push(key);
@@ -711,7 +749,11 @@ renderResults();
 
 document.getElementById("status").innerText=
 "Generated "+results.length+
-" lineups after "+tries+" attempts.";
+" lineups after "+tries+" attempts. " +
+"Failures: makeLineup="+failReasons.makeLineup+
+", duplicate="+failReasons.duplicate+
+", exposure="+failReasons.exposure+
+", unique="+failReasons.unique;
 
 }
 
