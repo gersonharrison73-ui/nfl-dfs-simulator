@@ -617,21 +617,31 @@ function buildField(fieldSize){
 
 // A rough model of "the field": lineups built by sampling players
 // weighted by projected ownership rather than by an optimizer.
-// This intentionally ignores salary cap / stacking rules — most of
-// the field isn't building perfectly optimal, salary-efficient
-// rosters either, they're mostly just rostering the popular names.
+// Real entrants still have to fill out a legal, salary-cap-legal
+// roster, so field lineups are rejected and resampled if they don't
+// fit the cap — otherwise the field skews unrealistically cheap and
+// our own cap-maximizing lineups beat it 100% of the time by default.
+//
+// Only realistically-rosterable players are eligible — a full DK
+// salary export includes dozens of inactive/4th-string players with
+// ~0 projection that no real entrant would use.
+const rosterable=players.filter(p=>p.proj>0.5);
+
+const cap=+document.getElementById("cap").value;
 const posNeeds=[["QB",1],["RB",2],["WR",3],["TE",1],["DST",1]];
 
 let field=[];
 
 for(let i=0;i<fieldSize;i++){
 
+for(let attempt=0;attempt<25;attempt++){
+
 let roster=[];
 let ok=true;
 
 posNeeds.forEach(([pos,count])=>{
 
-const pool=players.filter(p=>
+const pool=rosterable.filter(p=>
     p.pos===pos && !roster.some(x=>x.id===p.id)
 );
 
@@ -643,7 +653,9 @@ roster.push(...picked);
 
 });
 
-const flexPool=players.filter(p=>
+if(ok){
+
+const flexPool=rosterable.filter(p=>
     ["RB","WR","TE"].includes(p.pos) &&
     !roster.some(x=>x.id===p.id)
 );
@@ -656,7 +668,20 @@ if(flexPick){
     ok=false;
 }
 
-if(ok && roster.length===9)field.push(roster);
+}
+
+if(ok && roster.length===9){
+
+const salary=roster.reduce((s,p)=>s+p.salary,0);
+
+if(salary<=cap){
+    field.push(roster);
+    break;
+}
+
+}
+
+}
 
 }
 
