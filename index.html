@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">j
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>NFL DFS Simulator</title>
 
 <style>
@@ -289,14 +289,11 @@ return [
 {id:"34",name:"David Montgomery",pos:"RB",team:"DET",opp:"CHI",salary:5400,proj:13.8,ceil:21},
 {id:"35",name:"Joe Mixon",pos:"RB",team:"HOU",opp:"IND",salary:5700,proj:15.4,ceil:23},
 {id:"36",name:"Devin Singletary",pos:"RB",team:"HOU",opp:"IND",salary:4700,proj:11.8,ceil:19},
-{id:"37",name:"Bijan Robinson",pos:"RB",team:"ATL",opp:"CAR",salary:6200,proj:18.1,ceil:27},
 {id:"38",name:"Rhamondre Stevenson",pos:"RB",team:"NE",opp:"NYJ",salary:5200,proj:13.2,ceil:21},
 
 {id:"39",name:"Justin Jefferson",pos:"WR",team:"MIN",opp:"GB",salary:7500,proj:20.4,ceil:31},
 {id:"40",name:"Ja'Marr Chase",pos:"WR",team:"CIN",opp:"BAL",salary:7400,proj:20.1,ceil:31},
 {id:"41",name:"Deebo Samuel",pos:"WR",team:"SF",opp:"ARI",salary:6000,proj:16.4,ceil:25},
-{id:"42",name:"DeVonta Smith",pos:"WR",team:"PHI",opp:"DAL",salary:5800,proj:15.5,ceil:24},
-{id:"43",name:"CeeDee Lamb",pos:"WR",team:"DAL",opp:"PHI",salary:7100,proj:19.8,ceil:29},
 {id:"44",name:"Cooper Kupp",pos:"WR",team:"LAR",opp:"SEA",salary:6100,proj:16.8,ceil:25},
 {id:"45",name:"A.J. Green",pos:"WR",team:"ARI",opp:"SF",salary:4200,proj:9.8,ceil:17},
 {id:"46",name:"Chris Olave",pos:"WR",team:"NO",opp:"CAR",salary:5600,proj:14.5,ceil:23},
@@ -307,12 +304,10 @@ return [
 {id:"50",name:"Dallas Goedert",pos:"TE",team:"PHI",opp:"DAL",salary:4800,proj:11.8,ceil:20},
 {id:"51",name:"Dalton Kincaid",pos:"TE",team:"BUF",opp:"MIA",salary:4700,proj:11.6,ceil:20},
 {id:"52",name:"Kyle Pitts",pos:"TE",team:"ATL",opp:"CAR",salary:4500,proj:11.2,ceil:19},
-{id:"53",name:"Dallas Goedert",pos:"TE",team:"PHI",opp:"DAL",salary:4800,proj:11.8,ceil:20},
 
 {id:"54",name:"Bills DST",pos:"DST",team:"BUF",opp:"MIA",salary:3000,proj:8.4,ceil:15},
 {id:"55",name:"Eagles DST",pos:"DST",team:"PHI",opp:"DAL",salary:2900,proj:7.8,ceil:14},
 {id:"56",name:"Cowboys DST",pos:"DST",team:"DAL",opp:"PHI",salary:2800,proj:7.1,ceil:13},
-{id:"57",name:"49ers DST",pos:"DST",team:"SF",opp:"ARI",salary:3100,proj:8.1,ceil:15},
 {id:"58",name:"Lions DST",pos:"DST",team:"DET",opp:"CHI",salary:2700,proj:7.4,ceil:14},
 {id:"59",name:"Vikings DST",pos:"DST",team:"MIN",opp:"GB",salary:2600,proj:7.0,ceil:13},
 {id:"60",name:"Rams DST",pos:"DST",team:"LAR",opp:"SEA",salary:2500,proj:6.8,ceil:13}
@@ -361,21 +356,22 @@ const idx={
 name:header.findIndex(x=>x.toLowerCase()=="name"),
 pos:header.findIndex(x=>x.toLowerCase()=="position" || x.toLowerCase()=="pos"),
 salary:header.findIndex(x=>x.toLowerCase()=="salary"),
-team:header.findIndex(x=>x.toLowerCase().includes("team")),
-proj:header.findIndex(x=>x.toLowerCase().includes("projection")),
+team:header.findIndex(x=>x.toLowerCase()=="team" || x.toLowerCase()=="teamabbrev"),
+opp:header.findIndex(x=>x.toLowerCase().includes("opp")),
+proj:header.findIndex(x=>x.toLowerCase().includes("projection") || x.toLowerCase()=="proj" || x.toLowerCase()=="fpts"),
 id:header.findIndex(x=>x.toLowerCase()=="id")
 };
 
 players=lines.slice(1).map((line,i)=>{
 
-const c=line.split(",");
+const c=line.split(",").map(x=>x.trim());
 
 return {
 id:idx.id>=0?c[idx.id]:(i+1),
 name:c[idx.name]||"Player "+(i+1),
 pos:(c[idx.pos]||"WR").toUpperCase(),
 team:idx.team>=0?c[idx.team]:"",
-opp:"",
+opp:idx.opp>=0?c[idx.opp]:"",
 salary:+(c[idx.salary]||0),
 proj:+(c[idx.proj]||0),
 ceil:+(c[idx.proj]||0)*1.35
@@ -384,7 +380,8 @@ ceil:+(c[idx.proj]||0)*1.35
 }).filter(p=>p.salary>0);
 
 document.getElementById("poolStatus").innerText=
-"Imported "+players.length+" players.";
+"Imported "+players.length+" players."+
+(idx.opp<0?" (no opponent column found — bring-back stacking will be unavailable for this pool)":"");
 
 };
 
@@ -450,55 +447,21 @@ function pick(arr,count){
     const bValue = (b.proj / Math.max(1,b.salary)) * 1000;
 
     const aScore =
-      a.proj * 0.65 +
-      a.ceil * 0.20 +
-      aValue * 0.15 +
-      Math.random() * 2;
+      a.proj * 0.50 +
+      a.ceil * 0.15 +
+      aValue * 0.25 +
+      Math.random() * 8;
 
     const bScore =
-      b.proj * 0.65 +
-      b.ceil * 0.20 +
-      bValue * 0.15 +
-      Math.random() * 2;
+      b.proj * 0.50 +
+      b.ceil * 0.15 +
+      bValue * 0.25 +
+      Math.random() * 8;
 
     return bScore - aScore;
   });
 
   return copy.slice(0,count);
-}
-
-function validLineup(chosen){
-
-if(chosen.length!==9)return false;
-
-let salary=chosen.reduce((a,p)=>a+p.salary,0);
-
-let cap=+document.getElementById("cap").value;
-
-if(salary>cap)return false;
-
-let qb=chosen.find(p=>p.pos=="QB");
-let dst=chosen.find(p=>p.pos=="DST");
-
-if(document.getElementById("avoid").value=="yes" &&
-qb && dst && qb.team==dst.team){
-
-return false;
-
-}
-
-let qbs=chosen.filter(p=>p.pos=="QB").length;
-let rbs=chosen.filter(p=>p.pos=="RB").length;
-let wrs=chosen.filter(p=>p.pos=="WR").length;
-let tes=chosen.filter(p=>p.pos=="TE").length;
-let dsts=chosen.filter(p=>p.pos=="DST").length;
-
-return qbs==1 &&
-rbs>=2 &&
-wrs>=3 &&
-tes>=1 &&
-dsts==1;
-
 }
 
 function makeLineup(){
@@ -508,6 +471,59 @@ function makeLineup(){
   const bringCount = Math.min(2, +document.getElementById("bring").value);
 
   const qbs = players.filter(p => p.pos === "QB");
+
+  // Bail out immediately if the pool can't possibly fill a roster,
+  // instead of burning 500 attempts finding that out the hard way.
+  if(
+    qbs.length < 1 ||
+    players.filter(p => p.pos === "RB").length < 2 ||
+    players.filter(p => p.pos === "WR").length < 3 ||
+    players.filter(p => p.pos === "TE").length < 1 ||
+    players.filter(p => p.pos === "DST").length < 1
+  ){
+    return null;
+  }
+
+  // Cheapest available player at each position, used to check whether
+  // a pick would still leave enough salary to legally finish the
+  // roster. Without this, pick() (which favors high-projection
+  // players) tends to spend almost the entire cap on the first few
+  // slots and then has nothing left for FLEX/DST — which is why
+  // lineups could fail to generate at all under a tight cap.
+  const posMin = {
+    QB: Math.min(...players.filter(p => p.pos === "QB").map(p => p.salary)),
+    RB: Math.min(...players.filter(p => p.pos === "RB").map(p => p.salary)),
+    WR: Math.min(...players.filter(p => p.pos === "WR").map(p => p.salary)),
+    TE: Math.min(...players.filter(p => p.pos === "TE").map(p => p.salary)),
+    DST: Math.min(...players.filter(p => p.pos === "DST").map(p => p.salary))
+  };
+  const flexMin = Math.min(posMin.RB, posMin.WR, posMin.TE);
+  const rosterReq = { QB:1, RB:2, WR:3, TE:1, DST:1 };
+
+  function remainingMinCost(chosenList){
+    const counts = { QB:0, RB:0, WR:0, TE:0, DST:0 };
+    chosenList.forEach(p => { if(counts[p.pos] !== undefined) counts[p.pos]++; });
+
+    let cost = 0;
+    let mandatoryRemaining = 0;
+
+    Object.keys(rosterReq).forEach(pos => {
+      const need = Math.max(0, rosterReq[pos] - counts[pos]);
+      cost += need * posMin[pos];
+      mandatoryRemaining += need;
+    });
+
+    const flexNeeded = Math.max(0, 9 - chosenList.length - mandatoryRemaining);
+    cost += flexNeeded * flexMin;
+
+    return cost;
+  }
+
+  function affordable(candidate, chosenSoFar, cap){
+    const projected = [...chosenSoFar, candidate];
+    const salarySoFar = projected.reduce((s,p) => s + p.salary, 0);
+    return salarySoFar + remainingMinCost(projected) <= cap;
+  }
 
   for(let attempt=0; attempt<500; attempt++){
 
@@ -519,7 +535,8 @@ function makeLineup(){
     const stackPool = players.filter(p =>
       p.team === qb.team &&
       ["WR","TE"].includes(p.pos) &&
-      !chosen.some(x => x.id === p.id)
+      !chosen.some(x => x.id === p.id) &&
+      affordable(p, chosen, cap)
     );
 
     if(stackPool.length < stackCount) continue;
@@ -530,7 +547,8 @@ function makeLineup(){
     const bringPool = players.filter(p =>
       p.team === qb.opp &&
       ["RB","WR","TE"].includes(p.pos) &&
-      !chosen.some(x => x.id === p.id)
+      !chosen.some(x => x.id === p.id) &&
+      affordable(p, chosen, cap)
     );
 
     if(bringPool.length < bringCount) continue;
@@ -571,7 +589,8 @@ function fillPosition(pos,minCount){
 
       const pool = players.filter(p =>
         p.pos === pos &&
-        !chosen.some(x => x.id === p.id)
+        !chosen.some(x => x.id === p.id) &&
+        affordable(p, chosen, cap)
       );
 
       if(pool.length < need) return false;
@@ -660,12 +679,12 @@ if(dstCount !== 1) continue;
   return null;
 }
 
-function generate(){
+async function generate(){
 
 if(players.length<20){
     loadSample();
 }
-  
+
 results=[];
 
 let target=Math.min(
@@ -686,6 +705,7 @@ let counts={};
 let seen=[];
 
 let tries=0;
+let maxTries=target*10000;
 
 let failReasons={
     makeLineup:0,
@@ -694,12 +714,24 @@ let failReasons={
     unique:0
 };
 
+const btn=document.getElementById("generateBtn");
+btn.disabled=true;
+
 document.getElementById("status").innerText=
 "Generating and simulating...";
 
-while(results.length<target && tries<target*10000){
+while(results.length<target && tries<maxTries){
 
 tries++;
+
+// Yield back to the browser periodically so the tab doesn't
+// look frozen during a large run, and show live progress.
+if(tries % 300 === 0){
+    document.getElementById("status").innerText=
+    "Generating... "+results.length+"/"+target+
+    " lineups (attempt "+tries+")";
+    await new Promise(r=>setTimeout(r,0));
+}
 
 let lineup=makeLineup();
 
@@ -725,17 +757,26 @@ if(lineup.players.some(
     continue;
 }
 
-if(seen.length){
+// Compare against every lineup accepted so far, not just the
+// most recent one, so "minimum unique players" actually holds
+// across the whole set.
+if(results.length){
 
-let previous=results[results.length-1];
+let tooSimilar=results.some(existing=>{
 
 let common=lineup.players.filter(
-p=>previous.players.some(x=>x.id==p.id)
+p=>existing.players.some(x=>x.id===p.id)
 ).length;
 
-if(common>9-unique){
+return common>9-unique;
+
+});
+
+if(tooSimilar){
     failReasons.unique++;
     continue;
+}
+
 }
 
 seen.push(key);
@@ -753,6 +794,8 @@ results.push(lineup);
 results.sort((a,b)=>b.score-a.score);
 
 renderResults();
+
+btn.disabled=false;
 
 document.getElementById("status").innerText=
 "Generated "+results.length+
@@ -854,18 +897,10 @@ let wr=by("WR");
 let te=by("TE");
 let dst=by("DST")[0];
 
-let used=[
-qb,
-...rb,
-...wr,
-...te,
-dst
-];
-
-let flex=l.players.find(
-p=>["RB","WR","TE"].includes(p.pos) &&
-!used.includes(p)
-);
+// makeLineup() always pushes the FLEX pick last, after every
+// required position slot has already been filled, so the last
+// player in the array is guaranteed to be the FLEX player.
+let flex=l.players[l.players.length-1];
 
 rows.push([
 i+1,
