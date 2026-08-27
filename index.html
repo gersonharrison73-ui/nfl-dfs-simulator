@@ -713,7 +713,10 @@ let key=lineup.players
 .sort()
 .join("|");
 
-if(seen.includes(key))continue;
+if(seen.includes(key)){
+    failReasons.duplicate++;
+    continue;
+}
 
 if(lineup.players.some(
     p=>(counts[p.id]||0)>=exposure
@@ -753,7 +756,7 @@ renderResults();
 
 document.getElementById("status").innerText=
 "Generated "+results.length+
-" lineups after "+tries+" attempts. " +
+" lineups after " + tries + " attempts. " +
 "Failures: makeLineup="+failReasons.makeLineup+
 ", duplicate="+failReasons.duplicate+
 ", exposure="+failReasons.exposure+
