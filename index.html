@@ -191,6 +191,36 @@ th,td{
 </select>
 </div>
 
+<div>
+<label>Chalk Fade (GPP Leverage)</label>
+<select id="chalkFade">
+<option value="0">Off — proj/ceiling only</option>
+<option value="0.6">Light</option>
+<option value="1.1" selected>Medium</option>
+<option value="1.8">Heavy — max contrarian</option>
+</select>
+</div>
+
+<div>
+<label>Field Size (battle sim)</label>
+<input id="fieldSize" type="number" value="150" min="20" max="1000">
+</div>
+
+<div>
+<label>Cash Line %</label>
+<input id="cashLine" type="number" value="20" min="1" max="100">
+</div>
+
+<div>
+<label>Leverage Threshold (Max Own%)</label>
+<input id="leverageOwn" type="number" value="10" min="1" max="100">
+</div>
+
+<div>
+<label>Min % Lineups w/ Leverage Play</label>
+<input id="leverageQuotaPct" type="number" value="50" min="0" max="100">
+</div>
+
 </div>
 </div>
 
@@ -316,8 +346,32 @@ return [
 
 }
 
+function attachSyntheticOwnership(list){
+
+// The sample pool has no real ownership data. This is only a rough
+// stand-in — a real projections-site export (with an Own%/pOwn
+// column) will overwrite it entirely on CSV import.
+const maxProj=Math.max(...list.map(p=>p.proj));
+
+list.forEach(p=>{
+
+const valueScore=(p.proj/Math.max(1,p.salary))*1000;
+
+let own=(p.proj/maxProj)*32 + valueScore*1.8;
+
+own=Math.max(2,Math.min(45,Math.round(own)));
+
+p.own=own;
+p.floor=+(p.proj*0.65).toFixed(1);
+
+});
+
+return list;
+
+}
+
 function loadSample(){
-    players = samplePlayers();
+    players = attachSyntheticOwnership(samplePlayers());
 
     document.getElementById("poolStatus").innerText =
         "Loaded " + players.length + " sample players.";
@@ -359,12 +413,23 @@ salary:header.findIndex(x=>x.toLowerCase()=="salary"),
 team:header.findIndex(x=>x.toLowerCase()=="team" || x.toLowerCase()=="teamabbrev"),
 opp:header.findIndex(x=>x.toLowerCase().includes("opp")),
 proj:header.findIndex(x=>x.toLowerCase().includes("projection") || x.toLowerCase()=="proj" || x.toLowerCase()=="fpts"),
+ceil:header.findIndex(x=>x.toLowerCase().includes("ceil")),
+floor:header.findIndex(x=>x.toLowerCase().includes("floor")),
+own:header.findIndex(x=>{
+    const h=x.toLowerCase();
+    return h.includes("own") || h=="pown" || h=="rst%" || h=="rst";
+}),
 id:header.findIndex(x=>x.toLowerCase()=="id")
 };
 
 players=lines.slice(1).map((line,i)=>{
 
 const c=line.split(",").map(x=>x.trim());
+
+const proj=+(c[idx.proj]||0);
+
+const ownRaw=idx.own>=0?String(c[idx.own]||"").replace("%",""):"";
+const ownParsed=parseFloat(ownRaw);
 
 return {
 id:idx.id>=0?c[idx.id]:(i+1),
@@ -373,15 +438,26 @@ pos:(c[idx.pos]||"WR").toUpperCase(),
 team:idx.team>=0?c[idx.team]:"",
 opp:idx.opp>=0?c[idx.opp]:"",
 salary:+(c[idx.salary]||0),
-proj:+(c[idx.proj]||0),
-ceil:+(c[idx.proj]||0)*1.35
+proj:proj,
+ceil:idx.ceil>=0 && c[idx.ceil] ? +c[idx.ceil] : proj*1.35,
+floor:idx.floor>=0 && c[idx.floor] ? +c[idx.floor] : proj*0.65,
+own:isNaN(ownParsed)?null:ownParsed
 };
 
 }).filter(p=>p.salary>0);
 
+// If the projections file didn't include ownership, fall back to a
+// flat estimate so scoring math doesn't break — but leverage/chalk
+// fade won't mean anything until real ownership numbers are loaded.
+const missingOwn=players.filter(p=>p.own===null).length;
+players.forEach(p=>{ if(p.own===null) p.own=15; });
+
 document.getElementById("poolStatus").innerText=
 "Imported "+players.length+" players."+
-(idx.opp<0?" (no opponent column found — bring-back stacking will be unavailable for this pool)":"");
+(idx.opp<0?" No opponent column found — bring-back stacking unavailable.":"")+
+(idx.own<0?" No ownership column found — leverage scoring will use a flat 15% placeholder for everyone.":
+ (missingOwn>0?" "+missingOwn+" players missing ownership — defaulted to 15%.":""));
+
 
 };
 
@@ -439,24 +515,63 @@ return avg+
 
 }
 
+function leverageScore(p){
+
+// Rewards players whose ceiling upside is large relative to how
+// lightly-owned they are — i.e. plays where being right pays off
+// disproportionately because few other lineups have them.
+const own=(p.own===undefined || p.own===null) ? 15 : p.own;
+
+return (p.ceil - p.proj) * (1 - own/100);
+
+}
+
+function getChalkFade(){
+
+const el=document.getElementById("chalkFade");
+
+return el ? (+el.value || 0) : 0;
+
+}
+
 function pick(arr,count){
+
+  const chalkFade=getChalkFade();
 
   let copy=[...arr].sort((a,b)=>{
 
     const aValue = (a.proj / Math.max(1,a.salary)) * 1000;
     const bValue = (b.proj / Math.max(1,b.salary)) * 1000;
 
+    const aOwn=(a.own===undefined || a.own===null)?15:a.own;
+    const bOwn=(b.own===undefined || b.own===null)?15:b.own;
+
+    // Chalk fade does two things, both scaled by the selected
+    // strength: it directly discounts highly-owned players (so a
+    // popular stud doesn't win purely on raw projection), and it
+    // rewards players whose ceiling upside is large relative to how
+    // lightly they're owned (the classic GPP leverage play).
+    const aLev = leverageScore(a) * chalkFade * 0.6;
+    const bLev = leverageScore(b) * chalkFade * 0.6;
+
+    const aOwnPenalty = (aOwn/100) * chalkFade * 7;
+    const bOwnPenalty = (bOwn/100) * chalkFade * 7;
+
     const aScore =
-      a.proj * 0.50 +
+      a.proj * 0.45 +
       a.ceil * 0.15 +
-      aValue * 0.25 +
-      Math.random() * 8;
+      aValue * 0.20 +
+      aLev -
+      aOwnPenalty +
+      Math.random() * 6;
 
     const bScore =
-      b.proj * 0.50 +
+      b.proj * 0.45 +
       b.ceil * 0.15 +
-      bValue * 0.25 +
-      Math.random() * 8;
+      bValue * 0.20 +
+      bLev -
+      bOwnPenalty +
+      Math.random() * 6;
 
     return bScore - aScore;
   });
@@ -464,7 +579,130 @@ function pick(arr,count){
   return copy.slice(0,count);
 }
 
-function makeLineup(){
+function weightedSampleByOwnership(pool,count){
+
+// Weighted random sample without replacement. Weight = ownership%,
+// with a floor so even 0%-owned players can occasionally show up
+// in a simulated field (real fields aren't perfectly efficient).
+let candidates=pool.map(p=>({p,w:Math.max(0.5,p.own||15)}));
+
+let picks=[];
+
+for(let i=0;i<count && candidates.length;i++){
+
+let totalW=candidates.reduce((s,c)=>s+c.w,0);
+
+let r=Math.random()*totalW;
+
+let idx=0;
+
+for(;idx<candidates.length;idx++){
+    r-=candidates[idx].w;
+    if(r<=0)break;
+}
+
+idx=Math.min(idx,candidates.length-1);
+
+picks.push(candidates[idx].p);
+
+candidates.splice(idx,1);
+
+}
+
+return picks;
+
+}
+
+function buildField(fieldSize){
+
+// A rough model of "the field": lineups built by sampling players
+// weighted by projected ownership rather than by an optimizer.
+// This intentionally ignores salary cap / stacking rules — most of
+// the field isn't building perfectly optimal, salary-efficient
+// rosters either, they're mostly just rostering the popular names.
+const posNeeds=[["QB",1],["RB",2],["WR",3],["TE",1],["DST",1]];
+
+let field=[];
+
+for(let i=0;i<fieldSize;i++){
+
+let roster=[];
+let ok=true;
+
+posNeeds.forEach(([pos,count])=>{
+
+const pool=players.filter(p=>
+    p.pos===pos && !roster.some(x=>x.id===p.id)
+);
+
+const picked=weightedSampleByOwnership(pool,count);
+
+if(picked.length<count)ok=false;
+
+roster.push(...picked);
+
+});
+
+const flexPool=players.filter(p=>
+    ["RB","WR","TE"].includes(p.pos) &&
+    !roster.some(x=>x.id===p.id)
+);
+
+const flexPick=weightedSampleByOwnership(flexPool,1)[0];
+
+if(flexPick){
+    roster.push(flexPick);
+}else{
+    ok=false;
+}
+
+if(ok && roster.length===9)field.push(roster);
+
+}
+
+return field;
+
+}
+
+function battleTest(lineup,field,trials,cashLinePct){
+
+let winCount=0;
+let cashCount=0;
+let percentileSum=0;
+
+const cashRank=Math.max(1,Math.round(field.length*(cashLinePct/100)));
+
+for(let t=0;t<trials;t++){
+
+const myScore=lineup.players.reduce(
+    (s,p)=>s+simulatePlayer(p),0
+);
+
+const fieldScores=field.map(roster=>
+    roster.reduce((s,p)=>s+simulatePlayer(p),0)
+);
+
+const beatCount=fieldScores.filter(s=>myScore>s).length;
+
+percentileSum+=beatCount/fieldScores.length;
+
+const rank=fieldScores.length-beatCount+1;
+
+if(rank===1)winCount++;
+
+if(rank<=cashRank)cashCount++;
+
+}
+
+return {
+    winPct:(winCount/trials)*100,
+    cashPct:(cashCount/trials)*100,
+    avgPercentile:(percentileSum/trials)*100
+};
+
+}
+
+function makeLineup(forceLowOwn, lowOwnThreshold){
 
   const cap = +document.getElementById("cap").value;
   const stackCount = Math.min(3, +document.getElementById("qbStack").value);
@@ -616,11 +854,31 @@ if(chosen.length !== 8) continue;
   0
 );
 
-const flexPool = players.filter(p =>
+let flexPool = players.filter(p =>
   ["RB","WR","TE"].includes(p.pos) &&
   !chosen.some(x => x.id === p.id) &&
   currentSalary + p.salary <= cap
 );
+
+// If a leverage quota is active and this lineup doesn't already
+// have a qualifying low-owned player, force FLEX to be one.
+if(forceLowOwn){
+
+const ownOf = p => (p.own===undefined || p.own===null) ? 15 : p.own;
+
+const alreadyHasLeverage = chosen.some(p => ownOf(p) <= lowOwnThreshold);
+
+if(!alreadyHasLeverage){
+
+const leveragePool = flexPool.filter(p => ownOf(p) <= lowOwnThreshold);
+
+if(!leveragePool.length) continue;
+
+flexPool = leveragePool;
+
+}
+
+}
 
 if(!flexPool.length) continue;
 
@@ -701,6 +959,33 @@ target*(+document.getElementById("exposure").value/100)
 
 let unique=+document.getElementById("unique").value;
 
+let leverageOwn=Math.max(1,+document.getElementById("leverageOwn").value);
+let leverageQuotaPct=Math.max(0,Math.min(100,+document.getElementById("leverageQuotaPct").value));
+let leverageTargetCount=Math.ceil(target*(leverageQuotaPct/100));
+let leverageCount=0;
+let leverageInfeasible=false;
+
+// Feasibility check: if literally no FLEX-eligible player is at or
+// below the threshold, forcing it would fail every single attempt
+// forever. Bail out of the quota up front instead of hanging.
+{
+const ownOf=p=>(p.own===undefined || p.own===null)?15:p.own;
+const anyEligible=players.some(p=>
+    ["RB","WR","TE"].includes(p.pos) && ownOf(p)<=leverageOwn
+);
+if(leverageTargetCount>0 && !anyEligible){
+    leverageInfeasible=true;
+    leverageTargetCount=0;
+}
+}
+
+// Circuit breaker: if forcing a leverage play keeps failing (e.g.
+// only a couple of qualifying players exist and exposure/uniqueness
+// rules have exhausted them), stop forcing after enough consecutive
+// misses instead of retrying up to the hard cap every time.
+let forceFailStreak=0;
+const FORCE_FAIL_LIMIT=300;
+
 let counts={};
 let seen=[];
 
@@ -733,12 +1018,30 @@ if(tries % 300 === 0){
     await new Promise(r=>setTimeout(r,0));
 }
 
-let lineup=makeLineup();
+let wantsForce=
+    (leverageTargetCount - leverageCount) > 0 &&
+    (leverageTargetCount - leverageCount) >= (target - results.length);
+
+let lineup=makeLineup(wantsForce, leverageOwn);
 
 if(!lineup){
     failReasons.makeLineup++;
+
+    if(wantsForce){
+        forceFailStreak++;
+        if(forceFailStreak>=FORCE_FAIL_LIMIT){
+            // Quota isn't achievable at this exposure/uniqueness
+            // setting — stop insisting on it so generation can still
+            // finish, and report the shortfall at the end.
+            leverageTargetCount=leverageCount;
+            leverageInfeasible=true;
+        }
+    }
+
     continue;
 }
+
+forceFailStreak=0;
 
 let key=lineup.players
 .map(p=>p.id)
@@ -787,6 +1090,12 @@ lineup.players.forEach(
 p=>counts[p.id]=(counts[p.id]||0)+1
 );
 
+const ownOf=p=>(p.own===undefined || p.own===null)?15:p.own;
+
+if(lineup.players.some(p=>ownOf(p)<=leverageOwn)){
+    leverageCount++;
+}
+
 results.push(lineup);
 
 }
@@ -795,11 +1104,73 @@ results.sort((a,b)=>b.score-a.score);
 
 renderResults();
 
+// Battle-test the top lineups against a synthetic ownership-weighted
+// field: how often does this lineup actually beat a plausible field
+// of the field's rosters, not just its own raw sim score?
+if(results.length){
+
+document.getElementById("status").innerText=
+"Generated "+results.length+" lineups. Running field battle analysis...";
+
+await new Promise(r=>setTimeout(r,0));
+
+const fieldSize=Math.min(
+Math.max(20,+document.getElementById("fieldSize").value),
+1000
+);
+
+const cashLine=Math.min(
+Math.max(1,+document.getElementById("cashLine").value),
+100
+);
+
+const trials=Math.min(
+Math.max(1,+document.getElementById("sims").value),
+50
+);
+
+const field=buildField(fieldSize);
+
+const toAnalyze=results.slice(0,20);
+
+for(let i=0;i<toAnalyze.length;i++){
+
+const lineup=toAnalyze[i];
+
+lineup.totalOwn=lineup.players.reduce(
+(s,p)=>s+(p.own||0),0
+);
+
+if(field.length){
+
+const battle=battleTest(lineup,field,trials,cashLine);
+
+lineup.winPct=battle.winPct;
+lineup.cashPct=battle.cashPct;
+lineup.avgPercentile=battle.avgPercentile;
+
+}
+
+if(i % 3 === 0){
+    document.getElementById("status").innerText=
+    "Running field battle analysis... "+(i+1)+"/"+toAnalyze.length;
+    await new Promise(r=>setTimeout(r,0));
+}
+
+}
+
+renderResults();
+
+}
+
 btn.disabled=false;
 
 document.getElementById("status").innerText=
 "Generated "+results.length+
 " lineups after " + tries + " attempts. " +
+"Leverage plays (\u2264"+leverageOwn+"% own): "+leverageCount+"/"+results.length+
+" (target was "+Math.ceil(target*(leverageQuotaPct/100))+"). "+
+(leverageInfeasible?"Quota could not be fully met with the current player pool/exposure settings. ":"")+
 "Failures: makeLineup="+failReasons.makeLineup+
 ", duplicate="+failReasons.duplicate+
 ", exposure="+failReasons.exposure+
@@ -822,6 +1193,8 @@ let html="";
 
 results.slice(0,20).forEach((l,i)=>{
 
+const hasBattle = l.winPct !== undefined;
+
 html+=`
 <div class="lineup">
 <div>
@@ -833,7 +1206,16 @@ html+=`
 <div class="small">
 Projection: ${l.projection.toFixed(1)}
 &nbsp; Ceiling: ${l.ceiling.toFixed(1)}
+${l.totalOwn!==undefined?`&nbsp; Roster Own: ${l.totalOwn.toFixed(0)}%`:""}
 </div>
+
+${hasBattle?`
+<div class="small">
+vs field — Win: ${l.winPct.toFixed(1)}%
+&nbsp; Cash: ${l.cashPct.toFixed(1)}%
+&nbsp; Avg percentile: ${l.avgPercentile.toFixed(0)}th
+</div>
+`:""}
 
 ${l.players.map(p=>`
 <div class="player">
@@ -841,7 +1223,7 @@ ${l.players.map(p=>`
 <span class="badge">${p.pos}</span>
 ${p.name}
 </span>
-<span>${p.team}</span>
+<span>${p.team}${p.own!==undefined?` &nbsp; <span class="small">${p.own.toFixed(0)}% own</span>`:""}</span>
 </div>
 `).join("")}
 
@@ -879,7 +1261,10 @@ let rows=[
 "Salary",
 "Projection",
 "Ceiling",
-"Sim Score"
+"Sim Score",
+"Roster Own%",
+"Win% vs Field",
+"Cash% vs Field"
 ]
 ];
 
@@ -916,7 +1301,10 @@ dst?.name||"",
 l.salary,
 l.projection.toFixed(2),
 l.ceiling.toFixed(2),
-l.score.toFixed(2)
+l.score.toFixed(2),
+l.totalOwn!==undefined?l.totalOwn.toFixed(1):"",
+l.winPct!==undefined?l.winPct.toFixed(1):"",
+l.cashPct!==undefined?l.cashPct.toFixed(1):""
 ]);
 
 });
