@@ -221,6 +221,19 @@ th,td{
 <input id="leverageQuotaPct" type="number" value="50" min="0" max="100">
 </div>
 
+<div>
+<label>Late Swap: Lock FLEX to Late Game</label>
+<select id="lateFlexLock">
+<option value="off" selected>Off</option>
+<option value="on">On</option>
+</select>
+</div>
+
+<div>
+<label>Late Game Kickoff Hour (ET, 24h)</label>
+<input id="lateGameHour" type="number" value="16" min="0" max="23">
+</div>
+
 </div>
 </div>
 
@@ -239,6 +252,37 @@ th,td{
 <div id="poolStatus" class="status" style="margin-top:12px">
 Ready.
 </div>
+</div>
+
+<div class="card">
+<h2>Player Exposure Targets</h2>
+<div class="small">
+Pin specific players to a min/max share of your lineups — e.g. Chase
+Brown in 10-20% of lineups. Leave min at 0 for "up to X%" (a cap with
+no floor), or set both to the same number to force an exact share.
+</div>
+
+<div style="margin-top:12px;position:relative">
+<label>Search player</label>
+<input id="exposureSearch" type="text" placeholder="Start typing a name..." autocomplete="off" oninput="searchExposurePlayer(this.value)">
+<div id="exposureSearchResults" style="display:none;position:absolute;z-index:10;width:100%;max-height:220px;overflow-y:auto;background:#0e1527;border:1px solid var(--border);border-radius:10px;margin-top:4px"></div>
+</div>
+
+<div id="exposurePendingRow" style="display:none;margin-top:12px">
+<div class="grid">
+<div>
+<label>Min %</label>
+<input id="exposureMinInput" type="number" value="0" min="0" max="100">
+</div>
+<div>
+<label>Max %</label>
+<input id="exposureMaxInput" type="number" value="100" min="0" max="100">
+</div>
+</div>
+<button type="button" onclick="addExposureTarget()">Add Target</button>
+</div>
+
+<div id="exposureTargetsList" style="margin-top:14px"></div>
 </div>
 
 <div class="card">
@@ -272,6 +316,8 @@ No lineups generated yet.
 
 let players=[];
 let results=[];
+let exposureTargets=[]; // [{id, name, pos, minPct, maxPct}]
+let pendingExposurePlayer=null;
 
 function samplePlayers(){
 
@@ -392,6 +438,112 @@ document.getElementById("poolStatus").innerText=
 
 }
 
+function searchExposurePlayer(query){
+
+const box=document.getElementById("exposureSearchResults");
+
+query=query.trim().toLowerCase();
+
+if(!query || query.length<2){
+    box.style.display="none";
+    box.innerHTML="";
+    return;
+}
+
+const alreadyTargeted=new Set(exposureTargets.map(t=>t.id));
+
+const matches=players.filter(p=>
+    p.name.toLowerCase().includes(query) &&
+    !alreadyTargeted.has(p.id)
+).slice(0,15);
+
+if(!matches.length){
+    box.style.display="block";
+    box.innerHTML="<div style='padding:10px;color:var(--muted);font-size:13px'>No matches.</div>";
+    return;
+}
+
+box.innerHTML=matches.map(p=>
+    `<div style="padding:8px 10px;border-bottom:1px solid var(--border);cursor:pointer" onclick="selectExposurePlayer('${p.id}')">`+
+    `<span class="badge">${p.pos}</span> ${p.name} <span class="small">($${p.salary})</span>`+
+    `</div>`
+).join("");
+
+box.style.display="block";
+
+}
+
+function selectExposurePlayer(id){
+
+pendingExposurePlayer=players.find(p=>String(p.id)===String(id));
+
+if(!pendingExposurePlayer)return;
+
+document.getElementById("exposureSearch").value=pendingExposurePlayer.name;
+document.getElementById("exposureSearchResults").style.display="none";
+document.getElementById("exposurePendingRow").style.display="block";
+
+}
+
+function addExposureTarget(){
+
+if(!pendingExposurePlayer){
+    alert("Search for and select a player first.");
+    return;
+}
+
+const minPct=Math.max(0,Math.min(100,+document.getElementById("exposureMinInput").value));
+const maxPct=Math.max(0,Math.min(100,+document.getElementById("exposureMaxInput").value));
+
+if(minPct>maxPct){
+    alert("Min % can't be greater than Max %.");
+    return;
+}
+
+exposureTargets.push({
+    id:pendingExposurePlayer.id,
+    name:pendingExposurePlayer.name,
+    pos:pendingExposurePlayer.pos,
+    minPct,
+    maxPct
+});
+
+pendingExposurePlayer=null;
+document.getElementById("exposureSearch").value="";
+document.getElementById("exposurePendingRow").style.display="none";
+document.getElementById("exposureMinInput").value=0;
+document.getElementById("exposureMaxInput").value=100;
+
+renderExposureTargetsList();
+
+}
+
+function removeExposureTarget(id){
+
+exposureTargets=exposureTargets.filter(t=>String(t.id)!==String(id));
+
+renderExposureTargetsList();
+
+}
+
+function renderExposureTargetsList(){
+
+const el=document.getElementById("exposureTargetsList");
+
+if(!exposureTargets.length){
+    el.innerHTML="";
+    return;
+}
+
+el.innerHTML=exposureTargets.map(t=>
+    `<div class="player">`+
+    `<span><span class="badge">${t.pos}</span> ${t.name} <span class="small">(${t.minPct}%-${t.maxPct}%)</span></span>`+
+    `<span><button type="button" class="secondary" style="width:auto;padding:4px 10px;margin:0" onclick="removeExposureTarget('${t.id}')">Remove</button></span>`+
+    `</div>`
+).join("");
+
+}
+
 document.getElementById("file").addEventListener("change",function(e){
 
 const file=e.target.files[0];
@@ -419,6 +571,7 @@ own:header.findIndex(x=>{
     const h=x.toLowerCase();
     return h.includes("own") || h=="pown" || h=="rst%" || h=="rst";
 }),
+game:header.findIndex(x=>x.toLowerCase().includes("game")),
 id:header.findIndex(x=>x.toLowerCase()=="id")
 };
 
@@ -431,6 +584,8 @@ const proj=+(c[idx.proj]||0);
 const ownRaw=idx.own>=0?String(c[idx.own]||"").replace("%",""):"";
 const ownParsed=parseFloat(ownRaw);
 
+const gameRaw=idx.game>=0?c[idx.game]:"";
+
 return {
 id:idx.id>=0?c[idx.id]:(i+1),
 name:c[idx.name]||"Player "+(i+1),
@@ -441,7 +596,9 @@ salary:+(c[idx.salary]||0),
 proj:proj,
 ceil:idx.ceil>=0 && c[idx.ceil] ? +c[idx.ceil] : proj*1.35,
 floor:idx.floor>=0 && c[idx.floor] ? +c[idx.floor] : proj*0.65,
-own:isNaN(ownParsed)?null:ownParsed
+own:isNaN(ownParsed)?null:ownParsed,
+game:gameRaw,
+kickoffHour:parseKickoffHour(gameRaw)
 };
 
 }).filter(p=>p.salary>0);
@@ -456,7 +613,8 @@ document.getElementById("poolStatus").innerText=
 "Imported "+players.length+" players."+
 (idx.opp<0?" No opponent column found — bring-back stacking unavailable.":"")+
 (idx.own<0?" No ownership column found — leverage scoring will use a flat 15% placeholder for everyone.":
- (missingOwn>0?" "+missingOwn+" players missing ownership — defaulted to 15%.":""));
+ (missingOwn>0?" "+missingOwn+" players missing ownership — defaulted to 15%.":""))+
+(idx.game<0?" No game/kickoff-time column found — late-game FLEX lock unavailable.":"");
 
 
 };
@@ -464,6 +622,29 @@ document.getElementById("poolStatus").innerText=
 reader.readAsText(file);
 
 });
+
+function parseKickoffHour(gameStr){
+
+// Extracts a 24-hour kickoff hour from a "Game" field like
+// "NO@DET 09/13/2026 01:00PM ET" or "...04:25PM ET". Returns null
+// if no recognizable time is found (e.g. sample data with no
+// schedule info).
+if(!gameStr) return null;
+
+const m=String(gameStr).match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+
+if(!m) return null;
+
+let hour=parseInt(m[1],10);
+
+const ampm=m[3].toUpperCase();
+
+if(ampm==="PM" && hour!==12) hour+=12;
+if(ampm==="AM" && hour===12) hour=0;
+
+return hour;
+
+}
 
 function randNormal(){
 
@@ -476,13 +657,94 @@ Math.random()
 
 }
 
-function simulatePlayer(p){
+// Correlation model: rather than simulating every player as a fully
+// independent draw (which treats a QB and his own WR1 as no more
+// related than two players on a bye), each trial draws one shared
+// "game environment" shock per game and one shared "team" shock per
+// team, then blends them into every player's individual variance.
+// This is a standard factor-model approximation — not a full
+// play-by-play simulation — but it's what actually makes stacking
+// mathematically pay off: positive covariance between same-team (and
+// same-game) players increases the *lineup's* total variance, which
+// is the whole point of a correlated stack's fatter ceiling.
+//
+// Weights are position-specific: QB/WR/TE lean on both the game and
+// team shock (they live and die with the passing game), RB leans
+// more on team quality than the shared game shock (game script can
+// suppress RB volume even in a shootout), and DST uses the OPPONENT's
+// team shock with a negative sign — a good day for the opposing
+// offense is a bad day for your defense.
+const CORR_WEIGHTS={
+    QB:  { game:0.35, team:0.50, useOppTeam:false, sign:1 },
+    RB:  { game:0.15, team:0.35, useOppTeam:false, sign:1 },
+    WR:  { game:0.35, team:0.50, useOppTeam:false, sign:1 },
+    TE:  { game:0.30, team:0.50, useOppTeam:false, sign:1 },
+    DST: { game:0.25, team:0.35, useOppTeam:true,  sign:-1 }
+};
+
+function gameKeyFor(p){
+
+if(!p.team || !p.opp) return null;
+
+return [p.team,p.opp].sort().join("|");
+
+}
+
+function collectShockKeys(rosters){
+
+const games=new Set();
+const teams=new Set();
+
+rosters.forEach(roster=>{
+    roster.forEach(p=>{
+        if(p.team) teams.add(p.team);
+        const gk=gameKeyFor(p);
+        if(gk) games.add(gk);
+    });
+});
+
+return { games:Array.from(games), teams:Array.from(teams) };
+
+}
+
+function drawShocks(keys){
+
+const gameShock={};
+const teamShock={};
+
+keys.games.forEach(g=>{ gameShock[g]=randNormal(); });
+keys.teams.forEach(t=>{ teamShock[t]=randNormal(); });
+
+return { gameShock, teamShock };
+
+}
+
+function simulatePlayer(p, shocks){
 
 let sd=Math.max(1,(p.ceil-p.proj)*.45);
 
+const w=CORR_WEIGHTS[p.pos] || { game:0, team:0, useOppTeam:false, sign:1 };
+
+const gKey=gameKeyFor(p);
+const gShock=(shocks && gKey!==null && shocks.gameShock[gKey]!==undefined)
+    ? shocks.gameShock[gKey]
+    : randNormal();
+
+const relevantTeam=w.useOppTeam ? p.opp : p.team;
+const tShock=(shocks && relevantTeam && shocks.teamShock[relevantTeam]!==undefined)
+    ? shocks.teamShock[relevantTeam]
+    : randNormal();
+
+// Individual weight is whatever's left after the shared components,
+// so each player's own marginal variance stays the same as before —
+// only the *covariance* between correlated players changes.
+const idioWeight=Math.sqrt(Math.max(0, 1 - w.game*w.game - w.team*w.team));
+
+const combined = w.sign*(w.game*gShock + w.team*tShock) + idioWeight*randNormal();
+
 return Math.max(
 0,
-p.proj + randNormal()*sd
+p.proj + combined*sd
 );
 
 }
@@ -494,14 +756,18 @@ Math.max(1,+document.getElementById("sims").value),
 300
 );
 
+const keys=collectShockKeys([lineup.players]);
+
 let total=0;
 
 for(let i=0;i<runs;i++){
 
+const shocks=drawShocks(keys);
+
 let score=0;
 
 lineup.players.forEach(p=>{
-score+=simulatePlayer(p);
+score+=simulatePlayer(p, shocks);
 });
 
 total+=score;
@@ -697,14 +963,18 @@ let percentileSum=0;
 
 const cashRank=Math.max(1,Math.round(field.length*(cashLinePct/100)));
 
+const keys=collectShockKeys([lineup.players, ...field]);
+
 for(let t=0;t<trials;t++){
 
+const shocks=drawShocks(keys);
+
 const myScore=lineup.players.reduce(
-    (s,p)=>s+simulatePlayer(p),0
+    (s,p)=>s+simulatePlayer(p, shocks),0
 );
 
 const fieldScores=field.map(roster=>
-    roster.reduce((s,p)=>s+simulatePlayer(p),0)
+    roster.reduce((s,p)=>s+simulatePlayer(p, shocks),0)
 );
 
 const beatCount=fieldScores.filter(s=>myScore>s).length;
@@ -727,24 +997,59 @@ return {
 
 }
 
-function makeLineup(forceLowOwn, lowOwnThreshold){
+function makeLineup(forceLowOwn, lowOwnThreshold, forcedFlexPlayer, forcedPlayers, excludedIds){
+
+  forcedPlayers = forcedPlayers || [];
+  excludedIds = excludedIds || new Set();
+
+  // Dedupe in case two exposure targets somehow resolved to the same
+  // player in the same lineup.
+  const seenForcedIds = new Set();
+  forcedPlayers = forcedPlayers.filter(p=>{
+    if(seenForcedIds.has(p.id)) return false;
+    seenForcedIds.add(p.id);
+    return true;
+  });
 
   const cap = +document.getElementById("cap").value;
   const stackCount = Math.min(3, +document.getElementById("qbStack").value);
   const bringCount = Math.min(2, +document.getElementById("bring").value);
 
-  const qbs = players.filter(p => p.pos === "QB");
+  const qbs = players.filter(p => p.pos === "QB" && !excludedIds.has(p.id));
 
   // Bail out immediately if the pool can't possibly fill a roster,
   // instead of burning 500 attempts finding that out the hard way.
   if(
     qbs.length < 1 ||
-    players.filter(p => p.pos === "RB").length < 2 ||
-    players.filter(p => p.pos === "WR").length < 3 ||
-    players.filter(p => p.pos === "TE").length < 1 ||
-    players.filter(p => p.pos === "DST").length < 1
+    players.filter(p => p.pos === "RB" && !excludedIds.has(p.id)).length < 2 ||
+    players.filter(p => p.pos === "WR" && !excludedIds.has(p.id)).length < 3 ||
+    players.filter(p => p.pos === "TE" && !excludedIds.has(p.id)).length < 1 ||
+    players.filter(p => p.pos === "DST" && !excludedIds.has(p.id)).length < 1
   ){
     return null;
+  }
+
+  const rosterReq = { QB:1, RB:2, WR:3, TE:1, DST:1 };
+
+  // Validate the forced-player combination is even physically
+  // possible before burning any attempts on it. QB and DST have no
+  // FLEX alternative, so more than one of either is always illegal.
+  // Beyond that, only ONE extra RB/WR/TE (total, across all three)
+  // can be absorbed by the single FLEX slot.
+  {
+    const forcedCounts = { QB:0, RB:0, WR:0, TE:0, DST:0 };
+    forcedPlayers.forEach(p=>{ if(forcedCounts[p.pos]!==undefined) forcedCounts[p.pos]++; });
+
+    if(forcedCounts.QB>1 || forcedCounts.DST>1) return null;
+
+    let flexOverflow=0;
+    ["RB","WR","TE"].forEach(pos=>{
+      const over=forcedCounts[pos]-rosterReq[pos];
+      if(over>0) flexOverflow+=over;
+    });
+
+    if(flexOverflow>1) return null;
+    if(forcedFlexPlayer && flexOverflow>0) return null;
   }
 
   // Cheapest available player at each position, used to check whether
@@ -754,14 +1059,20 @@ function makeLineup(forceLowOwn, lowOwnThreshold){
   // slots and then has nothing left for FLEX/DST — which is why
   // lineups could fail to generate at all under a tight cap.
   const posMin = {
-    QB: Math.min(...players.filter(p => p.pos === "QB").map(p => p.salary)),
-    RB: Math.min(...players.filter(p => p.pos === "RB").map(p => p.salary)),
-    WR: Math.min(...players.filter(p => p.pos === "WR").map(p => p.salary)),
-    TE: Math.min(...players.filter(p => p.pos === "TE").map(p => p.salary)),
-    DST: Math.min(...players.filter(p => p.pos === "DST").map(p => p.salary))
+    QB: Math.min(...players.filter(p => p.pos === "QB" && !excludedIds.has(p.id)).map(p => p.salary)),
+    RB: Math.min(...players.filter(p => p.pos === "RB" && !excludedIds.has(p.id)).map(p => p.salary)),
+    WR: Math.min(...players.filter(p => p.pos === "WR" && !excludedIds.has(p.id)).map(p => p.salary)),
+    TE: Math.min(...players.filter(p => p.pos === "TE" && !excludedIds.has(p.id)).map(p => p.salary)),
+    DST: Math.min(...players.filter(p => p.pos === "DST" && !excludedIds.has(p.id)).map(p => p.salary))
   };
-  const flexMin = Math.min(posMin.RB, posMin.WR, posMin.TE);
-  const rosterReq = { QB:1, RB:2, WR:3, TE:1, DST:1 };
+  // If a specific FLEX player is being forced in (late-swap lock),
+  // the FLEX slot's true cost is their exact salary, not the generic
+  // cheapest-flex estimate — using the real number here means earlier
+  // picks correctly budget around it instead of over-spending and
+  // failing at the FLEX step later.
+  const flexMin = forcedFlexPlayer
+    ? forcedFlexPlayer.salary
+    : Math.min(posMin.RB, posMin.WR, posMin.TE);
 
   function remainingMinCost(chosenList){
     const counts = { QB:0, RB:0, WR:0, TE:0, DST:0 };
@@ -788,17 +1099,44 @@ function makeLineup(forceLowOwn, lowOwnThreshold){
     return salarySoFar + remainingMinCost(projected) <= cap;
   }
 
+  // Mandatory position limits, bumped by 1 wherever a validated
+  // forced-exposure player's overflow legitimately occupies the
+  // single FLEX slot (e.g. a 3rd forced RB) — otherwise this check
+  // would reject a combination we already confirmed is physically
+  // possible above.
+  const positionLimits = { QB:1, RB:2, WR:3, TE:1, DST:1 };
+  {
+    const forcedCounts2 = { QB:0, RB:0, WR:0, TE:0, DST:0 };
+    forcedPlayers.forEach(p=>{ if(forcedCounts2[p.pos]!==undefined) forcedCounts2[p.pos]++; });
+    ["RB","WR","TE"].forEach(pos=>{
+      const over=forcedCounts2[pos]-rosterReq[pos];
+      if(over>0) positionLimits[pos]+=over;
+    });
+  }
+
   for(let attempt=0; attempt<500; attempt++){
 
-    const qb = pick(qbs,1)[0];
-    if(!qb) continue;
-    let chosen = [qb];
+    // Seed any exposure-locked players first — fillPosition() below
+    // already only fills the *remaining* need per position, so a
+    // forced player naturally counts against their own mandatory
+    // slot (or the single FLEX slot, if their position is already
+    // full) without any special-casing.
+    let chosen = [...forcedPlayers];
+
+    let qb = chosen.find(p => p.pos === "QB");
+    if(!qb){
+      qb = pick(qbs,1)[0];
+      if(!qb) continue;
+      chosen.push(qb);
+    }
 
     // QB STACK
     const stackPool = players.filter(p =>
       p.team === qb.team &&
       ["WR","TE"].includes(p.pos) &&
       !chosen.some(x => x.id === p.id) &&
+      !excludedIds.has(p.id) &&
+      (!forcedFlexPlayer || p.id !== forcedFlexPlayer.id) &&
       affordable(p, chosen, cap)
     );
 
@@ -811,6 +1149,8 @@ function makeLineup(forceLowOwn, lowOwnThreshold){
       p.team === qb.opp &&
       ["RB","WR","TE"].includes(p.pos) &&
       !chosen.some(x => x.id === p.id) &&
+      !excludedIds.has(p.id) &&
+      (!forcedFlexPlayer || p.id !== forcedFlexPlayer.id) &&
       affordable(p, chosen, cap)
     );
 
@@ -820,14 +1160,6 @@ function makeLineup(forceLowOwn, lowOwnThreshold){
 
 // Make sure stack/bring-back selections
 // do not exceed the DraftKings position limits.
-const positionLimits = {
-    QB: 1,
-    RB: 2,
-    WR: 3,
-    TE: 1,
-    DST: 1
-};
-
 const positionCounts = {};
 
 chosen.forEach(p => {
@@ -853,6 +1185,8 @@ function fillPosition(pos,minCount){
       const pool = players.filter(p =>
         p.pos === pos &&
         !chosen.some(x => x.id === p.id) &&
+        !excludedIds.has(p.id) &&
+        (!forcedFlexPlayer || p.id !== forcedFlexPlayer.id) &&
         affordable(p, chosen, cap)
       );
 
@@ -868,46 +1202,67 @@ function fillPosition(pos,minCount){
     if(!fillPosition("TE",1)) continue;
     if(!fillPosition("DST",1)) continue;
 
-  // At this point we need exactly 8 players.
-// Stack and bring-back players are already included
-// in the RB/WR/TE position requirements.
-// The 9th player is FLEX.
-if(chosen.length !== 8) continue;
+  // Normally we need exactly 8 players here before adding the 9th
+  // (FLEX). But if a forced-exposure player's position already had
+  // its mandatory slots full, their overflow already occupies the
+  // flex-equivalent spot — chosen is already at 9 and there's no
+  // separate FLEX pick left to make.
+  if(chosen.length !== 8 && chosen.length !== 9) continue;
 
-  const currentSalary = chosen.reduce(
+if(chosen.length === 8){
+
+const currentSalary = chosen.reduce(
   (total,p) => total + p.salary,
   0
 );
 
-let flexPool = players.filter(p =>
-  ["RB","WR","TE"].includes(p.pos) &&
-  !chosen.some(x => x.id === p.id) &&
-  currentSalary + p.salary <= cap
-);
+if(forcedFlexPlayer){
 
-// If a leverage quota is active and this lineup doesn't already
-// have a qualifying low-owned player, force FLEX to be one.
-if(forceLowOwn){
+  // Late-swap lock: FLEX must be this exact player. Earlier stages
+  // already excluded them, so this should be a fresh slot — but
+  // guard against it anyway rather than rostering them twice.
+  if(chosen.some(p => p.id === forcedFlexPlayer.id)) continue;
 
-const ownOf = p => (p.own===undefined || p.own===null) ? 15 : p.own;
+  if(currentSalary + forcedFlexPlayer.salary > cap) continue;
 
-const alreadyHasLeverage = chosen.some(p => ownOf(p) <= lowOwnThreshold);
+  chosen.push(forcedFlexPlayer);
 
-if(!alreadyHasLeverage){
+}else{
 
-const leveragePool = flexPool.filter(p => ownOf(p) <= lowOwnThreshold);
+  let flexPool = players.filter(p =>
+    ["RB","WR","TE"].includes(p.pos) &&
+    !chosen.some(x => x.id === p.id) &&
+    !excludedIds.has(p.id) &&
+    currentSalary + p.salary <= cap
+  );
 
-if(!leveragePool.length) continue;
+  // If a leverage quota is active and this lineup doesn't already
+  // have a qualifying low-owned player, force FLEX to be one.
+  if(forceLowOwn){
 
-flexPool = leveragePool;
+    const ownOf = p => (p.own===undefined || p.own===null) ? 15 : p.own;
+
+    const alreadyHasLeverage = chosen.some(p => ownOf(p) <= lowOwnThreshold);
+
+    if(!alreadyHasLeverage){
+
+      const leveragePool = flexPool.filter(p => ownOf(p) <= lowOwnThreshold);
+
+      if(!leveragePool.length) continue;
+
+      flexPool = leveragePool;
+
+    }
+
+  }
+
+  if(!flexPool.length) continue;
+
+  chosen.push(pick(flexPool,1)[0]);
 
 }
 
 }
-
-if(!flexPool.length) continue;
-
-chosen.push(pick(flexPool,1)[0]);
 
     // Final validation
     if(chosen.length !== 9) continue;
@@ -1011,11 +1366,56 @@ if(leverageTargetCount>0 && !anyEligible){
 let forceFailStreak=0;
 const FORCE_FAIL_LIMIT=300;
 
+// Late-swap lock: find the highest-salaried RB/WR/TE kicking off in
+// the configured late-game hour. QB/DST are excluded since neither
+// is FLEX-eligible under DK rules, regardless of salary.
+let forcedFlexPlayer=null;
+let lateFlexNote="";
+let exposureConflictNote="";
+
+if(document.getElementById("lateFlexLock").value === "on"){
+
+const lateHour=Math.max(0,Math.min(23,+document.getElementById("lateGameHour").value));
+
+const candidates=players.filter(p=>
+    ["RB","WR","TE"].includes(p.pos) && p.kickoffHour===lateHour
+);
+
+if(candidates.length){
+
+    forcedFlexPlayer=candidates.reduce((best,p)=>
+        p.salary>best.salary?p:best
+    , candidates[0]);
+
+    lateFlexNote=" Locking "+forcedFlexPlayer.name+" ($"+forcedFlexPlayer.salary+
+        ", "+forcedFlexPlayer.pos+") into FLEX as the top-salaried "+lateHour+
+        ":00 kickoff.";
+
+}else{
+
+    lateFlexNote=" Late-swap FLEX lock enabled but no RB/WR/TE found kicking off "+
+        "at hour "+lateHour+" — check your CSV has a Game/kickoff-time column "+
+        "and that this week actually has a game in that window. Skipping the lock.";
+
+}
+
+}
+
 let counts={};
 let seen=[];
 
 let tries=0;
 let maxTries=target*10000;
+
+// General safety net: maxTries alone isn't a tight enough bound on
+// wall-clock time, since each failed try can itself burn up to 500
+// internal attempts. If nothing has succeeded in a long stretch,
+// the current settings are very likely mutually incompatible (e.g.
+// a locked player colliding with other constraints) — stop instead
+// of grinding through the full budget for several minutes.
+let consecutiveFails=0;
+const GLOBAL_FAIL_LIMIT=3000;
+let stoppedEarly=false;
 
 let failReasons={
     makeLineup:0,
@@ -1034,6 +1434,11 @@ while(results.length<target && tries<maxTries){
 
 tries++;
 
+if(consecutiveFails>=GLOBAL_FAIL_LIMIT){
+    stoppedEarly=true;
+    break;
+}
+
 // Yield back to the browser periodically so the tab doesn't
 // look frozen during a large run, and show live progress.
 if(tries % 300 === 0){
@@ -1047,10 +1452,64 @@ let wantsForce=
     (leverageTargetCount - leverageCount) > 0 &&
     (leverageTargetCount - leverageCount) >= (target - results.length);
 
-let lineup=makeLineup(wantsForce, leverageOwn);
+// Per-player exposure targets: force players whose min-quota
+// deficit has become unavoidable (same deadline-scheduling pattern
+// as the leverage quota), and hard-exclude anyone who's already
+// hit their max.
+let forcedByExposure=[];
+let excludedByExposure=new Set();
+
+exposureTargets.forEach(t=>{
+
+const playerObj=players.find(p=>p.id===t.id);
+
+if(!playerObj) return; // target player isn't in the current pool
+
+const isLateFlexLocked=forcedFlexPlayer && forcedFlexPlayer.id===t.id;
+
+const used=counts[t.id]||0;
+
+const maxCount=Math.floor(target*(t.maxPct/100));
+
+if(t.maxPct<100 && used>=maxCount){
+
+    if(isLateFlexLocked){
+
+        // The late-swap lock demands this exact player in every
+        // lineup — that's a direct contradiction with a max-exposure
+        // cap below 100%. The lock wins (it's the more explicit,
+        // deliberate setting), but we surface this clearly rather
+        // than silently blowing past the cap.
+        if(!exposureConflictNote){
+            exposureConflictNote=" Note: "+t.name+"'s "+t.maxPct+
+                "% max exposure target is being overridden by the "+
+                "late-swap FLEX lock, which requires them in every lineup.";
+        }
+
+    }else{
+
+        excludedByExposure.add(t.id);
+        return;
+
+    }
+
+}
+
+const minCount=Math.ceil(target*(t.minPct/100));
+const remainingNeed=minCount-used;
+const remainingSlots=target-results.length;
+
+if(remainingNeed>0 && remainingNeed>=remainingSlots && !isLateFlexLocked){
+    forcedByExposure.push(playerObj);
+}
+
+});
+
+let lineup=makeLineup(wantsForce, leverageOwn, forcedFlexPlayer, forcedByExposure, excludedByExposure);
 
 if(!lineup){
     failReasons.makeLineup++;
+    consecutiveFails++;
 
     if(wantsForce){
         forceFailStreak++;
@@ -1075,13 +1534,19 @@ let key=lineup.players
 
 if(seen.includes(key)){
     failReasons.duplicate++;
+    consecutiveFails++;
     continue;
 }
 
+let exposureTargetIds=new Set(exposureTargets.map(t=>t.id));
+
 if(lineup.players.some(
-    p=>(counts[p.id]||0)>=exposure
+    p=>(!forcedFlexPlayer || p.id!==forcedFlexPlayer.id) &&
+       !exposureTargetIds.has(p.id) &&
+       (counts[p.id]||0)>=exposure
 )){
     failReasons.exposure++;
+    consecutiveFails++;
     continue;
 }
 
@@ -1102,10 +1567,13 @@ return common>9-unique;
 
 if(tooSimilar){
     failReasons.unique++;
+    consecutiveFails++;
     continue;
 }
 
 }
+
+consecutiveFails=0;
 
 seen.push(key);
 
@@ -1190,16 +1658,78 @@ renderResults();
 
 btn.disabled=false;
 
+let exposureSummary="";
+
+if(exposureTargets.length && results.length){
+
+exposureSummary=" Player targets: "+exposureTargets.map(t=>{
+
+const used=counts[t.id]||0;
+
+const pct=(used/results.length*100).toFixed(0);
+
+const minOk=pct>=t.minPct;
+const maxOk=t.maxPct>=100 || pct<=t.maxPct;
+
+let flag="";
+if(!minOk) flag=" (below "+t.minPct+"% min)";
+else if(!maxOk) flag=" (above "+t.maxPct+"% max — overridden by late-swap lock)";
+
+return t.name+" "+pct+"%"+flag;
+
+}).join(", ")+".";
+
+}
+
 document.getElementById("status").innerText=
 "Generated "+results.length+
 " lineups after " + tries + " attempts. " +
+(stoppedEarly?"Stopped early — the current settings look mutually incompatible (e.g. a locked player conflicting with exposure/uniqueness limits). ":"")+
 "Leverage plays (\u2264"+leverageOwn+"% own): "+leverageCount+"/"+results.length+
 " (target was "+Math.ceil(target*(leverageQuotaPct/100))+"). "+
 (leverageInfeasible?"Quota could not be fully met with the current player pool/exposure settings. ":"")+
-"Failures: makeLineup="+failReasons.makeLineup+
+lateFlexNote+" "+
+exposureConflictNote+" "+
+exposureSummary+
+" Failures: makeLineup="+failReasons.makeLineup+
 ", duplicate="+failReasons.duplicate+
 ", exposure="+failReasons.exposure+
 ", unique="+failReasons.unique;
+
+}
+
+function assignDkSlots(playersArr){
+
+// FLEX is whichever RB/WR/TE exceeds that position's mandatory
+// count. This has to be determined by actual position counts, not
+// by array position — forced-exposure players get seeded at the
+// START of the roster during generation, so "the last player added"
+// is no longer reliably the FLEX pick the way it used to be before
+// per-player exposure targeting existed.
+const req={QB:1,RB:2,WR:3,TE:1,DST:1};
+
+const byPos={QB:[],RB:[],WR:[],TE:[],DST:[]};
+
+playersArr.forEach(p=>{ if(byPos[p.pos]) byPos[p.pos].push(p); });
+
+let flex=null;
+
+["RB","WR","TE"].forEach(pos=>{
+    while(byPos[pos].length>req[pos]){
+        flex=byPos[pos].pop();
+    }
+});
+
+const slots=[];
+
+byPos.QB.forEach(p=>slots.push({slot:"QB",player:p}));
+byPos.RB.forEach(p=>slots.push({slot:"RB",player:p}));
+byPos.WR.forEach(p=>slots.push({slot:"WR",player:p}));
+byPos.TE.forEach(p=>slots.push({slot:"TE",player:p}));
+slots.push({slot:"FLEX",player:flex});
+byPos.DST.forEach(p=>slots.push({slot:"DST",player:p}));
+
+return slots;
 
 }
 
@@ -1242,10 +1772,11 @@ vs field — Win: ${l.winPct.toFixed(1)}%
 </div>
 `:""}
 
-${l.players.map(p=>`
+${assignDkSlots(l.players).map(({slot,player:p})=>`
 <div class="player">
 <span>
-<span class="badge">${p.pos}</span>
+<span class="badge">${slot}</span>
+${slot==="FLEX"?`<span class="badge" style="background:#1c2540">${p.pos}</span> `:""}
 ${p.name}
 </span>
 <span>${p.team}${p.own!==undefined?` &nbsp; <span class="small">${p.own.toFixed(0)}% own</span>`:""}</span>
@@ -1295,22 +1826,16 @@ let rows=[
 
 results.forEach((l,i)=>{
 
-function by(pos){
+const slots=assignDkSlots(l.players);
 
-return l.players.filter(p=>p.pos==pos);
+const byLabel=label=>slots.filter(s=>s.slot===label).map(s=>s.player);
 
-}
-
-let qb=by("QB")[0];
-let rb=by("RB");
-let wr=by("WR");
-let te=by("TE");
-let dst=by("DST")[0];
-
-// makeLineup() always pushes the FLEX pick last, after every
-// required position slot has already been filled, so the last
-// player in the array is guaranteed to be the FLEX player.
-let flex=l.players[l.players.length-1];
+const qb=byLabel("QB")[0];
+const rb=byLabel("RB");
+const wr=byLabel("WR");
+const te=byLabel("TE")[0];
+const flex=byLabel("FLEX")[0];
+const dst=byLabel("DST")[0];
 
 rows.push([
 i+1,
@@ -1320,7 +1845,7 @@ rb[1]?.name||"",
 wr[0]?.name||"",
 wr[1]?.name||"",
 wr[2]?.name||"",
-te[0]?.name||"",
+te?.name||"",
 flex?.name||"",
 dst?.name||"",
 l.salary,
@@ -1362,8 +1887,8 @@ return;
 
 let l=results[0];
 
-let text=l.players.map(
-p=>`${p.pos}: ${p.name}`
+let text=assignDkSlots(l.players).map(
+({slot,player:p})=>`${slot}: ${p.name}`
 ).join("\n");
 
 navigator.clipboard?.writeText(text)
@@ -1375,6 +1900,10 @@ window.loadSample = loadSample;
 window.clearPlayers = clearPlayers;
 window.generate = generate;
 window.copyTop = copyTop;
+window.searchExposurePlayer = searchExposurePlayer;
+window.selectExposurePlayer = selectExposurePlayer;
+window.addExposureTarget = addExposureTarget;
+window.removeExposureTarget = removeExposureTarget;
   
 // Do not automatically load the sample pool
 
