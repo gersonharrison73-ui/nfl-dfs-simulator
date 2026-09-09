@@ -249,6 +249,15 @@ th,td{
 <input id="file" type="file" accept=".csv">
 </div>
 
+<div style="margin-top:14px">
+<label style="display:block;font-size:12px;color:var(--muted);margin-bottom:6px">
+Or paste CSV text directly (useful if downloading a file isn't working —
+copy the merged CSV text and paste it here instead)
+</label>
+<textarea id="pasteArea" rows="4" style="width:100%;background:#0e1527;color:var(--text);border:1px solid var(--border);border-radius:10px;padding:10px;font-family:monospace;font-size:11px" placeholder="Name,Position,Team,Opponent,Salary,Projection,..."></textarea>
+<button type="button" class="secondary" style="margin-top:8px" onclick="loadPastedCsv()">Load Pasted CSV</button>
+</div>
+
 <div id="poolStatus" class="status" style="margin-top:12px">
 Ready.
 </div>
@@ -553,13 +562,24 @@ if(!file)return;
 const reader=new FileReader();
 
 reader.onload=function(){
+    importCsvText(reader.result);
+};
 
-const lines=reader.result.trim().split(/\r?\n/);
+reader.readAsText(file);
+
+});
+
+function importCsvText(csvText){
+
+const lines=csvText.trim().split(/\r?\n/);
 
 const header=lines[0].split(",").map(x=>x.trim());
 
 const idx={
-name:header.findIndex(x=>x.toLowerCase()=="name"),
+name:header.findIndex(x=>{
+    const h=x.toLowerCase();
+    return h=="name" || h=="player";
+}),
 pos:header.findIndex(x=>x.toLowerCase()=="position" || x.toLowerCase()=="pos"),
 salary:header.findIndex(x=>x.toLowerCase()=="salary"),
 team:header.findIndex(x=>x.toLowerCase()=="team" || x.toLowerCase()=="teamabbrev"),
@@ -572,6 +592,12 @@ own:header.findIndex(x=>{
     return h.includes("own") || h=="pown" || h=="rst%" || h=="rst";
 }),
 game:header.findIndex(x=>x.toLowerCase().includes("game")),
+stdDev:header.findIndex(x=>{
+    const h=x.toLowerCase();
+    return h=="std dev" || h=="stddev" || h=="std" || h=="standard deviation";
+}),
+optimalPct:header.findIndex(x=>x.toLowerCase().includes("optimal")),
+leverage:header.findIndex(x=>x.toLowerCase().includes("leverage")),
 id:header.findIndex(x=>x.toLowerCase()=="id")
 };
 
@@ -598,7 +624,10 @@ ceil:idx.ceil>=0 && c[idx.ceil] ? +c[idx.ceil] : proj*1.35,
 floor:idx.floor>=0 && c[idx.floor] ? +c[idx.floor] : proj*0.65,
 own:isNaN(ownParsed)?null:ownParsed,
 game:gameRaw,
-kickoffHour:parseKickoffHour(gameRaw)
+kickoffHour:parseKickoffHour(gameRaw),
+stdDev:idx.stdDev>=0 && c[idx.stdDev] ? +c[idx.stdDev] : null,
+optimalPct:idx.optimalPct>=0 && c[idx.optimalPct]!=="" ? +c[idx.optimalPct] : null,
+leverage:idx.leverage>=0 && c[idx.leverage]!=="" ? +c[idx.leverage] : null
 };
 
 }).filter(p=>p.salary>0);
@@ -616,12 +645,25 @@ document.getElementById("poolStatus").innerText=
  (missingOwn>0?" "+missingOwn+" players missing ownership — defaulted to 15%.":""))+
 (idx.game<0?" No game/kickoff-time column found — late-game FLEX lock unavailable.":"");
 
+}
 
-};
+function loadPastedCsv(){
 
-reader.readAsText(file);
+const text=document.getElementById("pasteArea").value;
 
-});
+if(!text.trim()){
+    alert("Paste your CSV text first.");
+    return;
+}
+
+try{
+    importCsvText(text);
+}catch(err){
+    document.getElementById("poolStatus").innerText=
+    "Couldn't parse that as CSV: "+err.message;
+}
+
+}
 
 function parseKickoffHour(gameStr){
 
@@ -721,7 +763,19 @@ return { gameShock, teamShock };
 
 function simulatePlayer(p, shocks){
 
-let sd=Math.max(1,(p.ceil-p.proj)*.45);
+// randNormal() itself has an actual std dev of ~0.5 (it's a sum of
+// three uniforms, not a true unit-variance normal draw), and the
+// combined shock below inherits that same ~0.5 realized spread by
+// construction. The ceiling-based fallback formula already accounts
+// for this implicitly (it was tuned/tested against that behavior).
+// A real Std Dev value from the source data has actual external
+// meaning (Stokastic's own simulated standard deviation of fantasy
+// points), so it needs the compensating 1/0.5 factor to make the
+// realized simulated spread match what they actually intend, rather
+// than silently coming out at half that.
+let sd=(p.stdDev!==undefined && p.stdDev!==null && p.stdDev>0)
+    ? p.stdDev*2
+    : Math.max(1,(p.ceil-p.proj)*.45);
 
 const w=CORR_WEIGHTS[p.pos] || { game:0, team:0, useOppTeam:false, sign:1 };
 
@@ -800,6 +854,30 @@ return el ? (+el.value || 0) : 0;
 
 }
 
+function computeLeverageTerm(p, chalkFade){
+
+// Real leverage (Optimal% minus Ownership%, computed from the
+// source's own simulations) already nets out ceiling upside against
+// ownership in one properly-calibrated number — a positive value
+// means the player shows up in winning lineups more than the field
+// uses them (underowned relative to their true value), negative
+// means the opposite (a chalk trap). When it's available, trust it
+// directly instead of layering our own cruder heuristic + separate
+// ownership penalty on top.
+if(p.leverage!==undefined && p.leverage!==null){
+    return p.leverage * chalkFade * 0.6;
+}
+
+const own=(p.own===undefined || p.own===null) ? 15 : p.own;
+
+const lev=leverageScore(p) * chalkFade * 0.6;
+
+const ownPenalty=(own/100) * chalkFade * 7;
+
+return lev - ownPenalty;
+
+}
+
 function pick(arr,count){
 
   const chalkFade=getChalkFade();
@@ -809,34 +887,25 @@ function pick(arr,count){
     const aValue = (a.proj / Math.max(1,a.salary)) * 1000;
     const bValue = (b.proj / Math.max(1,b.salary)) * 1000;
 
-    const aOwn=(a.own===undefined || a.own===null)?15:a.own;
-    const bOwn=(b.own===undefined || b.own===null)?15:b.own;
-
-    // Chalk fade does two things, both scaled by the selected
-    // strength: it directly discounts highly-owned players (so a
-    // popular stud doesn't win purely on raw projection), and it
-    // rewards players whose ceiling upside is large relative to how
-    // lightly they're owned (the classic GPP leverage play).
-    const aLev = leverageScore(a) * chalkFade * 0.6;
-    const bLev = leverageScore(b) * chalkFade * 0.6;
-
-    const aOwnPenalty = (aOwn/100) * chalkFade * 7;
-    const bOwnPenalty = (bOwn/100) * chalkFade * 7;
+    // Chalk fade discounts highly-owned players and rewards
+    // leverage plays, scaled by the selected strength. See
+    // computeLeverageTerm() for how the source of that leverage
+    // signal is chosen.
+    const aLevTerm = computeLeverageTerm(a, chalkFade);
+    const bLevTerm = computeLeverageTerm(b, chalkFade);
 
     const aScore =
       a.proj * 0.45 +
       a.ceil * 0.15 +
       aValue * 0.20 +
-      aLev -
-      aOwnPenalty +
+      aLevTerm +
       Math.random() * 6;
 
     const bScore =
       b.proj * 0.45 +
       b.ceil * 0.15 +
       bValue * 0.20 +
-      bLev -
-      bOwnPenalty +
+      bLevTerm +
       Math.random() * 6;
 
     return bScore - aScore;
@@ -1904,6 +1973,7 @@ window.searchExposurePlayer = searchExposurePlayer;
 window.selectExposurePlayer = selectExposurePlayer;
 window.addExposureTarget = addExposureTarget;
 window.removeExposureTarget = removeExposureTarget;
+window.loadPastedCsv = loadPastedCsv;
   
 // Do not automatically load the sample pool
 
