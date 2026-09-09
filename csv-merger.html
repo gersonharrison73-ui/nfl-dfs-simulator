@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DFS CSV Merger</title>
+
+<style>
+:root{
+  --bg:#0b1020;
+  --card:#151c31;
+  --muted:#9aa5b5;
+  --text:#f4f7fb;
+  --accent:#4f8cff;
+  --green:#24c77a;
+  --red:#e05a5a;
+  --border:#28334d;
+}
+*{box-sizing:border-box}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
+  font-family:Arial,sans-serif;
+}
+main{
+  max-width:760px;
+  margin:auto;
+  padding:18px;
+}
+h1{font-size:25px;margin:0 0 6px}
+h2{font-size:17px;margin:0 0 14px}
+.small{font-size:12px;color:var(--muted)}
+.card{
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:16px;
+  padding:16px;
+  margin-bottom:14px;
+}
+label{
+  display:block;
+  font-size:13px;
+  color:var(--muted);
+  margin-bottom:6px;
+}
+input,button{
+  width:100%;
+  font:inherit;
+}
+input[type=file]{
+  background:#0e1527;
+  color:var(--text);
+  border:1px solid var(--border);
+  border-radius:10px;
+  padding:10px;
+}
+input[type=number],input[type=text]{
+  background:#0e1527;
+  color:var(--text);
+  border:1px solid var(--border);
+  border-radius:8px;
+  padding:6px 8px;
+  font-size:13px;
+}
+button{
+  border:0;
+  border-radius:12px;
+  padding:12px;
+  font-weight:bold;
+  cursor:pointer;
+  background:var(--accent);
+  color:white;
+  margin-top:10px;
+}
+button.secondary{background:#273149}
+button:disabled{opacity:0.5;cursor:not-allowed}
+.status{
+  padding:10px;
+  background:#0e1527;
+  border-radius:10px;
+  color:#b8c5d8;
+  font-size:13px;
+}
+.stat-row{
+  display:flex;
+  gap:16px;
+  flex-wrap:wrap;
+  margin-top:10px;
+}
+.stat{
+  background:#0e1527;
+  border-radius:10px;
+  padding:10px 14px;
+  flex:1;
+  min-width:110px;
+}
+.stat .num{font-size:22px;font-weight:bold}
+.stat.ok .num{color:var(--green)}
+.stat.warn .num{color:var(--red)}
+table{
+  width:100%;
+  border-collapse:collapse;
+  font-size:12px;
+  margin-top:8px;
+}
+th,td{
+  padding:6px 4px;
+  border-bottom:1px solid #263047;
+  text-align:left;
+}
+th{color:var(--muted);font-weight:normal}
+td input{width:70px;padding:4px 6px;font-size:12px}
+.badge{
+  padding:2px 6px;
+  border-radius:6px;
+  background:#26334e;
+  font-size:11px;
+}
+.scroll-table{
+  max-height:400px;
+  overflow-y:auto;
+  border:1px solid var(--border);
+  border-radius:10px;
+  padding:6px;
+}
+</style>
+</head>
+
+<body>
+<main>
+
+<div class="card">
+<h1>🔗 DFS CSV Merger</h1>
+<div class="small">
+Merge your weekly DraftKings salary export with a projections/ownership
+file from any other site into one CSV your lineup generator can read.
+</div>
+</div>
+
+<div class="card">
+<h2>1. Upload files</h2>
+
+<label>DraftKings Salary CSV</label>
+<input id="dkFile" type="file" accept=".csv">
+<div style="margin-top:6px">
+<textarea id="dkPasteArea" rows="3" style="width:100%;background:#0e1527;color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px;font-family:monospace;font-size:11px" placeholder="...or paste the DK CSV text here instead if uploading isn't working"></textarea>
+<button type="button" class="secondary" style="margin-top:6px" onclick="loadPastedDk()">Load Pasted DK CSV</button>
+</div>
+
+<div style="height:12px"></div>
+
+<label>Projections / Ownership CSV (any site)</label>
+<input id="projFile" type="file" accept=".csv">
+<div style="margin-top:6px">
+<textarea id="projPasteArea" rows="3" style="width:100%;background:#0e1527;color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px;font-family:monospace;font-size:11px" placeholder="...or paste the projections CSV text here instead if uploading isn't working"></textarea>
+<button type="button" class="secondary" style="margin-top:6px" onclick="loadPastedProj()">Load Pasted Projections CSV</button>
+</div>
+
+<button id="mergeBtn" onclick="runMerge()" disabled>Merge Files</button>
+
+<div id="status" class="status" style="margin-top:12px">
+Upload both files to begin.
+</div>
+
+<div id="fileWarning" class="status" style="display:none;margin-top:8px;background:#3a1f1f;color:#ffb4b4;border:1px solid var(--red)">
+</div>
+</div>
+
+<div id="resultsCard" class="card" style="display:none">
+<h2>2. Review matches</h2>
+
+<div class="stat-row">
+<div class="stat ok">
+<div class="num" id="matchedCount">0</div>
+<div class="small">Matched automatically</div>
+</div>
+<div class="stat warn">
+<div class="num" id="unmatchedCount">0</div>
+<div class="small">Need manual review</div>
+</div>
+<div class="stat">
+<div class="num" id="unusedCount">0</div>
+<div class="small">Unused proj. rows</div>
+</div>
+</div>
+
+<div id="unmatchedSection" style="display:none;margin-top:16px">
+<div class="small">
+These DraftKings players had no confident match in your projections file.
+Fill in a projection manually if they matter to you (skill players with
+$0 projection won't be usable in the generator), or leave blank to treat
+them as irrelevant/inactive.
+</div>
+
+<div class="scroll-table" style="margin-top:8px">
+<table id="unmatchedTable">
+<thead>
+<tr><th>Player</th><th>Pos</th><th>Team</th><th>Proj</th><th>Ceil</th><th>Own%</th></tr>
+</thead>
+<tbody></tbody>
+</table>
+</div>
+</div>
+
+<div id="unusedSection" style="display:none;margin-top:16px">
+<div class="small">
+These players appeared in your projections file but not on the DK slate
+(inactive, byes, or just not in this file) — nothing to do, shown for
+your awareness.
+</div>
+<div class="scroll-table" style="margin-top:8px">
+<table id="unusedTable">
+<thead><tr><th>Player</th><th>Pos</th><th>Team</th></tr></thead>
+<tbody></tbody>
+</table>
+</div>
+</div>
+
+<button id="downloadBtn" onclick="downloadMerged()">Download / Share Merged CSV</button>
+<button id="copyBtn" class="secondary" onclick="copyMergedCsv()">Copy CSV to Clipboard</button>
+</div>
+
+</main>
+
+<script>
+
+let dkText = null;
+let projText = null;
+let mergeResult = null;
+let lastDkFileName = null;
+let lastProjFileName = null;
+
+function normalizeName(name) {
+  return (name || '')
+    .toLowerCase()
+    .replace(/[.']/g, '')
+    .replace(/-/g, ' ')
+    .replace(/\b(jr|sr|ii|iii|iv|v)\b\.?/g, '')
+    .replace(/[^a-z0-9\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+const TEAM_ALIASES = {
+  JAC:'JAX', JAX:'JAX',
+  WSH:'WAS', WAS:'WAS',
+  LA:'LAR', LAR:'LAR',
+  OAK:'LV', LV:'LV', LVR:'LV',
+  SD:'LAC', LAC:'LAC',
+  STL:'LAR',
+  ARZ:'ARI', ARI:'ARI',
+  NOR:'NO', NO:'NO',
+  GNB:'GB', GB:'GB',
+  KAN:'KC', KC:'KC',
+  NWE:'NE', NE:'NE',
+  SFO:'SF', SF:'SF',
+  TAM:'TB', TB:'TB'
+};
+
+function normTeam(t) {
+  const up = (t || '').toUpperCase().trim();
+  return TEAM_ALIASES[up] || up;
+}
+
+const DEFENSE_NICKNAME_TO_ABBR = {
+  cardinals:'ARI', arizona:'ARI',
+  falcons:'ATL', atlanta:'ATL',
+  ravens:'BAL', baltimore:'BAL',
+  bills:'BUF', buffalo:'BUF',
+  panthers:'CAR', carolina:'CAR',
+  bears:'CHI', chicago:'CHI',
+  bengals:'CIN', cincinnati:'CIN',
+  browns:'CLE', cleveland:'CLE',
+  cowboys:'DAL', dallas:'DAL',
+  broncos:'DEN', denver:'DEN',
+  lions:'DET', detroit:'DET',
+  packers:'GB', 'green bay':'GB',
+  texans:'HOU', houston:'HOU',
+  colts:'IND', indianapolis:'IND',
+  jaguars:'JAX', jacksonville:'JAX',
+  chiefs:'KC', 'kansas city':'KC',
+  raiders:'LV', 'las vegas':'LV',
+  chargers:'LAC',
+  rams:'LAR',
+  dolphins:'MIA', miami:'MIA',
+  vikings:'MIN', minnesota:'MIN',
+  patriots:'NE', 'new england':'NE',
+  saints:'NO', 'new orleans':'NO',
+  giants:'NYG',
+  jets:'NYJ',
+  eagles:'PHI', philadelphia:'PHI',
+  steelers:'PIT', pittsburgh:'PIT',
+  '49ers':'SF', niners:'SF', francisco:'SF',
+  seahawks:'SEA', seattle:'SEA',
+  buccaneers:'TB', bucs:'TB', tampa:'TB',
+  titans:'TEN', tennessee:'TEN',
+  commanders:'WAS', washington:'WAS'
+};
+
+function resolveDefenseTeam(name, teamField) {
+  if (teamField) return normTeam(teamField);
+  const n = (name || '').toLowerCase();
+  for (const key in DEFENSE_NICKNAME_TO_ABBR) {
+    if (n.includes(key)) return DEFENSE_NICKNAME_TO_ABBR[key];
+  }
+  return '';
+}
+
+function similarity(a, b) {
+  if (a === b) return 1;
+  if (!a.length || !b.length) return 0;
+  const m = a.length, n = b.length;
+  const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = a[i-1] === b[j-1]
+        ? dp[i-1][j-1]
+        : 1 + Math.min(dp[i-1][j-1], dp[i-1][j], dp[i][j-1]);
+    }
+  }
+  const dist = dp[m][n];
+  return 1 - dist / Math.max(m, n);
+}
+
+function parseCSV(text) {
+  // Strip a leading BOM -- common in Excel/Numbers-exported CSVs.
+  // Left in place, it silently breaks exact-match header detection
+  // (e.g. the first header cell becomes "\uFEFFPosition", which
+  // never equals "position" even after lowercasing).
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+
+  const rows = [];
+  let row = [], field = '', inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i+1] === '"') { field += '"'; i++; }
+        else inQuotes = false;
+      } else field += c;
+    } else {
+      if (c === '"') inQuotes = true;
+      else if (c === ',') { row.push(field); field = ''; }
+      else if (c === '\r') { /* skip */ }
+      else if (c === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+      else field += c;
+    }
+  }
+  if (field.length || row.length) { row.push(field); rows.push(row); }
+  return rows.filter(r => !(r.length === 1 && r[0] === ''));
+}
+
+function rowsToObjects(rows) {
+  const header = rows[0].map(h => h.trim());
+  return rows.slice(1).map(r => {
+    const obj = {};
+    header.forEach((h, i) => obj[h] = (r[i] !== undefined ? r[i].trim() : ''));
+    return obj;
+  });
+}
+
+function detectColumns(header) {
+  const low = header.map(h => h.toLowerCase());
+  const find = (preds) => {
+    for (const p of preds) {
+      const idx = low.findIndex(p);
+      if (idx >= 0) return header[idx];
+    }
+    return null;
+  };
+  return {
+    name: find([h => h === 'name', h => h === 'player']),
+    pos: find([h => h === 'position', h => h === 'pos']),
+    team: find([h => h === 'team', h => h === 'teamabbrev', h => h === 'tm']),
+    salary: find([h => h === 'salary']),
+    opp: find([h => h.includes('opp')]),
+    game: find([h => h.includes('game')]),
+    proj: find([h => h.includes('projection'), h => h === 'proj', h => h === 'fpts']),
+    ceil: find([h => h.includes('ceil')]),
+    floor: find([h => h.includes('floor')]),
+    own: find([h => h.includes('own'), h => h === 'pown', h => h === 'rst%', h => h === 'rst']),
+    stdDev: find([h => h === 'std dev', h => h === 'stddev', h => h === 'std', h => h === 'standard deviation']),
+    optimalPct: find([h => h.includes('optimal')]),
+    leverage: find([h => h.includes('leverage')])
+  };
+}
+
+function findHeaderRow(rows, maxScan) {
+  // Some exports (notably DraftKings' raw "bulk upload / entries"
+  // template) bury the real header several rows down, behind
+  // instructional text and a roster-slot placeholder row like
+  // "QB,RB,RB,WR,WR,WR,TE,FLEX,DST,...". Scan for the first row
+  // that actually looks like a real header (has both a name-like
+  // and a salary column) instead of blindly assuming row 1 is it.
+  const limit = Math.min(maxScan || 20, rows.length);
+  for (let i = 0; i < limit; i++) {
+    const low = rows[i].map(h => (h || '').trim().toLowerCase());
+    const hasName = low.some(h => h === 'name' || h === 'player');
+    const hasSalary = low.some(h => h === 'salary');
+    if (hasName && hasSalary) return i;
+  }
+  return 0;
+}
+
+function deriveOpponentFromGame(gameInfo, team) {
+  // Some DK exports only encode the matchup in a "Game Info" field
+  // like "NO@DET 09/13/2026 01:00PM ET" rather than a separate
+  // Opponent column. Pull the opponent out of that when needed.
+  if (!gameInfo || !team) return '';
+  const matchup = gameInfo.trim().split(/\s+/)[0]; // "NO@DET"
+  const teams = matchup.split('@');
+  if (teams.length !== 2) return '';
+  const t = team.toUpperCase();
+  if (teams[0].toUpperCase() === t) return teams[1];
+  if (teams[1].toUpperCase() === t) return teams[0];
+  return '';
+}
+
+function mergeFiles(dkText, projText) {
+  const dkRowsAll = parseCSV(dkText);
+  const projRowsAll = parseCSV(projText);
+
+  const dkHeaderIdx = findHeaderRow(dkRowsAll);
+  const projHeaderIdx = findHeaderRow(projRowsAll);
+
+  const dkObjs = rowsToObjects(dkRowsAll.slice(dkHeaderIdx));
+  const projObjs = rowsToObjects(projRowsAll.slice(projHeaderIdx));
+
+  const dkCols = detectColumns(Object.keys(dkObjs[0] || {}));
+  const projCols = detectColumns(Object.keys(projObjs[0] || {}));
+
+  const skillMap = new Map();
+  const dstMap = new Map();
+  const unusedProj = new Set(projObjs);
+
+  projObjs.forEach(p => {
+    const pos = (p[projCols.pos] || '').toUpperCase();
+    const name = p[projCols.name] || '';
+    if (pos === 'DST') {
+      const team = resolveDefenseTeam(name, p[projCols.team]);
+      if (team) dstMap.set(team, p);
+    } else {
+      const key = normalizeName(name) + '|' + pos;
+      skillMap.set(key, p);
+    }
+  });
+
+  const merged = [];
+  const unmatchedDK = [];
+
+  dkObjs.forEach(d => {
+    const name = d[dkCols.name] || '';
+    const pos = (d[dkCols.pos] || '').toUpperCase();
+    const team = normTeam(d[dkCols.team] || '');
+
+    let match = null;
+
+    if (pos === 'DST') {
+      match = dstMap.get(team) || null;
+    } else {
+      const key = normalizeName(name) + '|' + pos;
+      match = skillMap.get(key) || null;
+
+      if (!match) {
+        let best = null, bestScore = 0;
+        const target = normalizeName(name);
+        for (const p of unusedProj) {
+          const pPos = (p[projCols.pos] || '').toUpperCase();
+          if (pPos !== pos) continue;
+          const score = similarity(target, normalizeName(p[projCols.name] || ''));
+          if (score > bestScore) { bestScore = score; best = p; }
+        }
+        if (best && bestScore >= 0.82) match = best;
+      }
+    }
+
+    if (match) unusedProj.delete(match);
+
+    const rawTeam = d[dkCols.team] || '';
+    const gameInfo = dkCols.game ? (d[dkCols.game] || '') : '';
+    const opponent = dkCols.opp
+      ? (d[dkCols.opp] || '')
+      : deriveOpponentFromGame(gameInfo, rawTeam);
+
+    merged.push({
+      Name: name,
+      Position: pos,
+      Team: rawTeam,
+      Opponent: opponent,
+      Salary: d[dkCols.salary] || '',
+      Projection: match ? (match[projCols.proj] || '') : '',
+      Ceiling: match ? (match[projCols.ceil] || '') : '',
+      Floor: match ? (match[projCols.floor] || '') : '',
+      Ownership: match ? (match[projCols.own] || '') : '',
+      'Std Dev': match && projCols.stdDev ? (match[projCols.stdDev] || '') : '',
+      'Optimal %': match && projCols.optimalPct ? (match[projCols.optimalPct] || '') : '',
+      Leverage: match && projCols.leverage ? (match[projCols.leverage] || '') : '',
+      Game: gameInfo,
+      _matched: !!match
+    });
+
+    if (!match) unmatchedDK.push({ name, pos, team });
+  });
+
+  return {
+    merged,
+    unmatchedDK,
+    unusedProj: Array.from(unusedProj).map(p => ({
+      name: p[projCols.name],
+      pos: p[projCols.pos],
+      team: p[projCols.team]
+    })),
+    projColsFound: {
+      proj: !!projCols.proj,
+      own: !!projCols.own,
+      ceil: !!projCols.ceil
+    }
+  };
+}
+
+// ---- UI wiring ----
+
+document.getElementById('dkFile').addEventListener('change', function(e){
+  const file = e.target.files[0];
+  if (!file) return;
+  lastDkFileName = file.name;
+  const reader = new FileReader();
+  reader.onload = function(){
+    dkText = reader.result;
+    checkReady();
+  };
+  reader.readAsText(file);
+});
+
+document.getElementById('projFile').addEventListener('change', function(e){
+  const file = e.target.files[0];
+  if (!file) return;
+  lastProjFileName = file.name;
+  const reader = new FileReader();
+  reader.onload = function(){
+    projText = reader.result;
+    checkReady();
+  };
+  reader.readAsText(file);
+});
+
+function checkReady(){
+  const btn = document.getElementById('mergeBtn');
+  if (dkText && projText){
+    btn.disabled = false;
+    document.getElementById('status').innerText = 'Both files loaded. Click Merge Files.';
+  }
+}
+
+function loadPastedDk(){
+  const text = document.getElementById('dkPasteArea').value;
+  if (!text.trim()){
+    alert('Paste your DraftKings CSV text first.');
+    return;
+  }
+  dkText = text;
+  lastDkFileName = null; // pasted text has no filename to compare for the mixup warning
+  checkReady();
+}
+
+function loadPastedProj(){
+  const text = document.getElementById('projPasteArea').value;
+  if (!text.trim()){
+    alert('Paste your projections CSV text first.');
+    return;
+  }
+  projText = text;
+  lastProjFileName = null;
+  checkReady();
+}
+
+function runMerge(){
+
+  try {
+    mergeResult = mergeFiles(dkText, projText);
+  } catch(err) {
+    document.getElementById('status').innerText = 'Error reading files: ' + err.message;
+    return;
+  }
+
+  const total = mergeResult.merged.length;
+  const matched = mergeResult.merged.filter(r => r._matched).length;
+  const unmatched = mergeResult.unmatchedDK.length;
+  const unused = mergeResult.unusedProj.length;
+
+  document.getElementById('status').innerText =
+    'Merged ' + total + ' players from the DK file.';
+
+  const warningEl = document.getElementById('fileWarning');
+  const foundCols = mergeResult.projColsFound;
+
+  if (!foundCols.proj && !foundCols.own) {
+    warningEl.style.display = 'block';
+    warningEl.innerText =
+      "⚠ Your projections file doesn't seem to have Projection or " +
+      "Ownership columns. This usually means the same file (or another " +
+      "DK salary file) was selected for both slots by mistake — double-" +
+      "check you picked your actual projections/ownership export for " +
+      "the second upload.";
+  } else if (lastDkFileName && lastProjFileName && lastDkFileName === lastProjFileName) {
+    warningEl.style.display = 'block';
+    warningEl.innerText =
+      "⚠ Both uploads are named \"" + lastDkFileName + "\" — make sure " +
+      "you didn't accidentally pick the same file for both slots.";
+  } else {
+    warningEl.style.display = 'none';
+  }
+
+  document.getElementById('matchedCount').innerText = matched;
+  document.getElementById('unmatchedCount').innerText = unmatched;
+  document.getElementById('unusedCount').innerText = unused;
+
+  document.getElementById('resultsCard').style.display = 'block';
+
+  const unmatchedSection = document.getElementById('unmatchedSection');
+  const unmatchedBody = document.querySelector('#unmatchedTable tbody');
+  unmatchedBody.innerHTML = '';
+
+  if (unmatched > 0){
+    unmatchedSection.style.display = 'block';
+
+    mergeResult.merged.forEach((r, idx) => {
+      if (r._matched) return;
+      const tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td>' + r.Name + '</td>' +
+        '<td><span class="badge">' + r.Position + '</span></td>' +
+        '<td>' + r.Team + '</td>' +
+        '<td><input type="number" step="0.1" data-idx="' + idx + '" data-field="Projection" onchange="patchRow(this)"></td>' +
+        '<td><input type="number" step="0.1" data-idx="' + idx + '" data-field="Ceiling" onchange="patchRow(this)"></td>' +
+        '<td><input type="text" placeholder="e.g. 12%" data-idx="' + idx + '" data-field="Ownership" onchange="patchRow(this)"></td>';
+      unmatchedBody.appendChild(tr);
+    });
+  } else {
+    unmatchedSection.style.display = 'none';
+  }
+
+  const unusedSection = document.getElementById('unusedSection');
+  const unusedBody = document.querySelector('#unusedTable tbody');
+  unusedBody.innerHTML = '';
+
+  if (unused > 0){
+    unusedSection.style.display = 'block';
+    mergeResult.unusedProj.forEach(p => {
+      const tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td>' + (p.name||'') + '</td>' +
+        '<td>' + (p.pos||'') + '</td>' +
+        '<td>' + (p.team||'') + '</td>';
+      unusedBody.appendChild(tr);
+    });
+  } else {
+    unusedSection.style.display = 'none';
+  }
+}
+
+function patchRow(input){
+  const idx = +input.dataset.idx;
+  const field = input.dataset.field;
+  mergeResult.merged[idx][field] = input.value;
+}
+
+function csvField(x){
+  const s = String(x);
+  if (s.includes(',') || s.includes('"') || s.includes('\n')){
+    return '"' + s.replaceAll('"','""') + '"';
+  }
+  return s;
+}
+
+function buildMergedCsvText(){
+
+  const cols = ['Name','Position','Team','Opponent','Salary','Projection','Ceiling','Floor','Ownership','Std Dev','Optimal %','Leverage','Game'];
+
+  const rows = [cols];
+
+  mergeResult.merged.forEach(r => {
+    rows.push(cols.map(c => r[c] !== undefined ? r[c] : ''));
+  });
+
+  return rows.map(r => r.map(csvField).join(',')).join('\n');
+
+}
+
+async function downloadMerged(){
+
+  if (!mergeResult){
+    alert('Run a merge first.');
+    return;
+  }
+
+  const csv = buildMergedCsvText();
+  const filename = 'merged_slate.csv';
+
+  // Web Share API with an actual File works far more reliably than a
+  // blob-download link inside restrictive in-app webviews (like this
+  // preview) — it hands off to the native iOS share sheet, from which
+  // "Save to Files" works normally. Try this first.
+  try {
+    const file = new File([csv], filename, { type: 'text/csv' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: filename });
+      return;
+    }
+  } catch (err) {
+    // User cancelling the share sheet also lands here — that's not a
+    // failure, just don't fall through to a second download attempt.
+    if (err && err.name === 'AbortError') return;
+  }
+
+  // Fallback: classic blob + anchor click (works in normal browser tabs).
+  try {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    document.getElementById('status').innerText =
+      'If nothing downloaded, use "Copy CSV to Clipboard" instead and paste it into a new file.';
+  } catch (err) {
+    document.getElementById('status').innerText =
+      "Couldn't trigger a download here — use \"Copy CSV to Clipboard\" instead.";
+  }
+
+}
+
+async function copyMergedCsv(){
+
+  if (!mergeResult){
+    alert('Run a merge first.');
+    return;
+  }
+
+  const csv = buildMergedCsvText();
+
+  try {
+    await navigator.clipboard.writeText(csv);
+    document.getElementById('status').innerText =
+      'Merged CSV copied to clipboard — paste it into the Files app or Notes, then save as a .csv file.';
+  } catch (err) {
+    document.getElementById('status').innerText =
+      "Couldn't copy automatically. Long-press the button below and select the text manually.";
+  }
+
+}
+
+</script>
+</body>
+</html>
