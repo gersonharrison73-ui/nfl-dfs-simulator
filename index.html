@@ -1100,6 +1100,14 @@ function makeLineup(forceLowOwn, lowOwnThreshold, forcedFlexPlayer, forcedPlayer
 
   const rosterReq = { QB:1, RB:2, WR:3, TE:1, DST:1 };
 
+  // A player projected for next to nothing isn't a "leverage play"
+  // just because their ownership is low — they're 0% owned because
+  // nobody expects them to see meaningful snaps, not because the
+  // field is sleeping on them. Without this floor, forcing a
+  // low-owned player into FLEX could grab a legitimate backup
+  // (e.g. a real starter's backup TE) instead of an actual sleeper.
+  const MIN_VIABLE_PROJ = 3;
+
   // Validate the forced-player combination is even physically
   // possible before burning any attempts on it. QB and DST have no
   // FLEX alternative, so more than one of either is always illegal.
@@ -1302,6 +1310,7 @@ if(forcedFlexPlayer){
     ["RB","WR","TE"].includes(p.pos) &&
     !chosen.some(x => x.id === p.id) &&
     !excludedIds.has(p.id) &&
+    p.proj >= MIN_VIABLE_PROJ &&
     currentSalary + p.salary <= cap
   );
 
