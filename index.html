@@ -195,8 +195,8 @@ th,td{
 <label>Chalk Fade (GPP Leverage)</label>
 <select id="chalkFade">
 <option value="0">Off — proj/ceiling only</option>
-<option value="0.6">Light</option>
-<option value="1.1" selected>Medium</option>
+<option value="0.6" selected>Light</option>
+<option value="1.1">Medium</option>
 <option value="1.8">Heavy — max contrarian</option>
 </select>
 </div>
@@ -218,7 +218,7 @@ th,td{
 
 <div>
 <label>Min % Lineups w/ Leverage Play</label>
-<input id="leverageQuotaPct" type="number" value="50" min="0" max="100">
+<input id="leverageQuotaPct" type="number" value="15" min="0" max="100">
 </div>
 
 <div>
@@ -914,6 +914,60 @@ function pick(arr,count){
   return copy.slice(0,count);
 }
 
+function pickFlex(flexPool, chalkFade){
+
+// FLEX candidates can be RB, WR, or TE all at once, and TE is
+// structurally the cheapest position on the slate — so a raw,
+// cross-position comparison of "value" (proj/salary) and leverage
+// systematically favors TE over RB/WR even when a given TE isn't
+// actually a good play, just a cheap one. A backup TE's real talent
+// dropoff (TE1 -> TE2) is also far steeper than a backup RB's
+// (RB2 -> RB3) or WR's (WR3 -> WR4), which the raw formula has no way
+// to see. To fix that without touching how RB/WR/TE are scored
+// against same-position rivals (pick() above, used to fill the
+// mandatory slots, is left untouched), the value and leverage terms
+// here are converted to z-scores *within each position group* before
+// being compared, so "underpriced/underowned relative to my own
+// position" drives the FLEX pick instead of "cheapest on the slate."
+const groups = {};
+flexPool.forEach(p => { (groups[p.pos] = groups[p.pos] || []).push(p); });
+
+function stats(list, fn){
+    const vals = list.map(fn);
+    const mean = vals.reduce((s,v)=>s+v,0) / vals.length;
+    const variance = vals.reduce((s,v)=>s+(v-mean)*(v-mean),0) / vals.length;
+    return { mean, sd: Math.sqrt(variance) || 1 };
+}
+
+const valueStats = {}, levStats = {};
+Object.keys(groups).forEach(pos => {
+    valueStats[pos] = stats(groups[pos], p => (p.proj / Math.max(1,p.salary)) * 1000);
+    levStats[pos] = stats(groups[pos], p => computeLeverageTerm(p, chalkFade));
+});
+
+function zValue(p){
+    const s = valueStats[p.pos];
+    const raw = (p.proj / Math.max(1,p.salary)) * 1000;
+    return s.sd ? (raw - s.mean) / s.sd : 0;
+}
+function zLev(p){
+    const s = levStats[p.pos];
+    const raw = computeLeverageTerm(p, chalkFade);
+    return s.sd ? (raw - s.mean) / s.sd : 0;
+}
+
+let copy=[...flexPool].sort((a,b)=>{
+
+    const aScore = a.proj*0.45 + a.ceil*0.15 + zValue(a)*1.2 + zLev(a)*1.5 + Math.random()*6;
+    const bScore = b.proj*0.45 + b.ceil*0.15 + zValue(b)*1.2 + zLev(b)*1.5 + Math.random()*6;
+
+    return bScore - aScore;
+});
+
+return copy[0];
+
+}
+
 function weightedSampleByOwnership(pool,count){
 
 // Weighted random sample without replacement. Weight = ownership%,
@@ -1144,12 +1198,23 @@ function makeLineup(forceLowOwn, lowOwnThreshold, forcedFlexPlayer, forcedPlayer
   };
   // If a specific FLEX player is being forced in (late-swap lock),
   // the FLEX slot's true cost is their exact salary, not the generic
-  // cheapest-flex estimate — using the real number here means earlier
+  // flex-budget estimate — using the real number here means earlier
   // picks correctly budget around it instead of over-spending and
   // failing at the FLEX step later.
+  //
+  // When FLEX isn't forced, the reserved budget deliberately uses the
+  // MOST expensive of the three floors (Math.max), not the cheapest.
+  // TE is almost always the cheapest position on any given slate, so
+  // using its floor here (the old behavior) told the optimizer "you
+  // only need to hold back a couple thousand dollars for FLEX" — it
+  // would then spend freely on the mandatory RB/WR/TE slots, and by
+  // the time FLEX was actually picked there was routinely only enough
+  // cap room left for a cheap TE, never a $4000+ RB. Reserving against
+  // the priciest floor keeps FLEX genuinely open to any position
+  // instead of structurally squeezing it toward TE.
   const flexMin = forcedFlexPlayer
     ? forcedFlexPlayer.salary
-    : Math.min(posMin.RB, posMin.WR, posMin.TE);
+    : Math.max(posMin.RB, posMin.WR, posMin.TE);
 
   function remainingMinCost(chosenList){
     const counts = { QB:0, RB:0, WR:0, TE:0, DST:0 };
@@ -1336,7 +1401,7 @@ if(forcedFlexPlayer){
 
   if(!flexPool.length) continue;
 
-  chosen.push(pick(flexPool,1)[0]);
+  chosen.push(pickFlex(flexPool, getChalkFade()));
 
 }
 
